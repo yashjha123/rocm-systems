@@ -1556,6 +1556,40 @@ TEST(CacheVmidTest, InvalidateAllVmidsRemovesEveryAliasedLine) {
   EXPECT_FALSE(cache.lookup(kAddr, nullptr, /*vmid=*/2));
 }
 
+TEST(CacheVmidTest, InvalidateAllLazilyReusesStaleWaysWithoutEviction) {
+  TestCache cache;
+  constexpr uint64_t kSetStride = static_cast<uint64_t>(TestCache::LINE_SIZE) * 4;
+  constexpr uint64_t kAddrA = 0x1000;
+  constexpr uint64_t kAddrB = kAddrA + kSetStride;
+  constexpr uint64_t kAddrC = kAddrB + kSetStride;
+
+  cache.allocate(kAddrA, /*vmid=*/1)->dirty = true;
+  cache.allocate(kAddrB, /*vmid=*/2);
+  cache.invalidate_all();
+
+  EXPECT_FALSE(cache.lookup(kAddrA, nullptr, /*vmid=*/1));
+  EXPECT_FALSE(cache.lookup(kAddrB, nullptr, /*vmid=*/2));
+
+  CacheTag evicted{.valid = 1, .dirty = true};
+  cache.allocate(kAddrC, /*vmid=*/3, &evicted);
+  EXPECT_FALSE(evicted.valid);
+  EXPECT_FALSE(evicted.dirty);
+  EXPECT_TRUE(cache.lookup(kAddrC, nullptr, /*vmid=*/3));
+}
+
+TEST(CacheVmidTest, InvalidateAllClearsTokensBeforeGenerationWrap) {
+  TestCache cache;
+  constexpr uint64_t kAddr = 0x14000;
+
+  cache.allocate(kAddr, /*vmid=*/1);
+  for (uint32_t i = 0; i < UINT16_MAX; ++i)
+    cache.invalidate_all();
+
+  EXPECT_FALSE(cache.lookup(kAddr, nullptr, /*vmid=*/1));
+  cache.allocate(kAddr, /*vmid=*/1);
+  EXPECT_TRUE(cache.lookup(kAddr, nullptr, /*vmid=*/1));
+}
+
 TEST(CacheVmidTest, LineDataForReadReturnsMatchingVmidData) {
   TestCache cache;
   constexpr uint64_t kAddr = 0x10000;
