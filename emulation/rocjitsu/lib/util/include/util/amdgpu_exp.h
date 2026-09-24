@@ -137,6 +137,44 @@ inline uint32_t amdgpu_exp_bits(uint32_t input) {
   return (static_cast<uint32_t>(exponent) << 23) | (static_cast<uint32_t>(rounded) & 0x7fffffu);
 }
 
+/// @brief Round an unrounded exponential to F16 with nearest-even, keeping F16 subnormals.
+/// @details This is the default-MODE narrowing; callers can apply F16 output flushing or
+/// FP16_OVFL clamping to the returned bits. NaNs keep sign and upper payload bits.
+inline uint16_t amdgpu_exp_round_f16(const AmdgpuExpWide &wide) {
+  switch (wide.kind) {
+  case AmdgpuExpWide::Kind::QUIET_NAN:
+    return static_cast<uint16_t>(((wide.nan_bits >> 16) & 0x8000u) | 0x7e00u |
+                                 ((wide.nan_bits >> 13) & 0x3ffu));
+  case AmdgpuExpWide::Kind::ZERO:
+    return 0;
+  case AmdgpuExpWide::Kind::INFINITE:
+    return 0x7c00;
+  case AmdgpuExpWide::Kind::FINITE:
+    break;
+  }
+  // value = significand * 2^(exponent - 36); F16 keeps 11 bits, unit 2^(e - 10), e >= -14.
+  int32_t unit = wide.exponent - 10; // exponent of the F16 ULP for a [1, 2) significand
+  if (unit < -24)
+    unit = -24;
+  const int32_t shift = unit - (wide.exponent - 36);
+  if (shift >= 64)
+    return 0;
+  const uint64_t quotient = wide.significand >> shift;
+  const uint64_t remainder = wide.significand & ((uint64_t{1} << shift) - 1);
+  const uint64_t half = uint64_t{1} << (shift - 1);
+  uint64_t rounded = quotient + (remainder > half || (remainder == half && (quotient & 1)));
+  int32_t biased = unit + 25; // biased exponent when rounded is in [2^10, 2^11)
+  if (rounded >> 11) {
+    rounded >>= 1;
+    ++biased;
+  }
+  if (rounded < 0x400u)
+    return static_cast<uint16_t>(rounded); // subnormal or zero
+  if (biased >= 31)
+    return 0x7c00;
+  return static_cast<uint16_t>((static_cast<uint32_t>(biased) << 10) | (rounded & 0x3ffu));
+}
+
 } // namespace util::detail
 
 namespace util {

@@ -372,6 +372,57 @@ inline uint32_t rdna4_exp_log_f32(bool logarithm, uint32_t source, bool absolute
   return core;
 }
 
+// Adapted from the hardware-validated policy in commit fbb4a6cc298c.
+/// @brief F16 EXP/LOG pipeline measured on gfx1201, independent of FP_ROUND.
+/// @details EXP rounds its wide result directly to F16. OMOD acts on the rounded
+/// half result and flushes intermediate subnormals. FP16_OVFL saturates infinite
+/// results of finite sources, including LOG(0), before and after OMOD.
+inline uint16_t rdna4_exp_log_f16(bool logarithm, uint16_t source, uint32_t denorm_mode,
+                                  bool fp16_ovfl, bool absolute = false, bool negate = false,
+                                  uint32_t omod = 0, bool clamp = false) {
+  if (absolute)
+    source &= 0x7fffu;
+  if (negate)
+    source ^= 0x8000u;
+  if ((denorm_mode & 1u) == 0 && (source & 0x7c00u) == 0)
+    source &= 0x8000u;
+  const uint32_t promoted = std::bit_cast<uint32_t>(util::f16_to_f32(source));
+  uint16_t result =
+      !logarithm ? util::detail::amdgpu_exp_round_f16(util::detail::amdgpu_exp_wide(promoted))
+                 : util::f32_to_f16(std::bit_cast<float>(util::detail::amdgpu_log_bits(promoted)));
+  if ((omod != 0 || (denorm_mode & 2u) == 0) && (result & 0x7c00u) == 0)
+    result &= 0x8000u;
+  const auto saturate = [=](uint16_t bits) -> uint16_t {
+    if (fp16_ovfl && (bits & 0x7fffu) == 0x7c00u && (source & 0x7fffu) != 0x7c00u)
+      return (bits & 0x8000u) | 0x7bffu;
+    return bits;
+  };
+  result = saturate(result);
+  if (omod != 0) {
+    const uint16_t sign = result & 0x8000u;
+    const int exponent = (result >> 10) & 0x1fu;
+    if ((result & 0x7fffu) == 0) {
+      result = 0;
+    } else if (exponent != 0x1f) {
+      const int scaled = exponent + (omod == 1 ? 1 : omod == 2 ? 2 : -1);
+      if (scaled <= 0)
+        result = sign;
+      else if (scaled >= 0x1f)
+        result = sign | 0x7c00u;
+      else
+        result = sign | (scaled << 10) | (result & 0x03ffu);
+    }
+    result = saturate(result);
+  }
+  if (clamp) {
+    if ((result & 0x7fffu) > 0x7c00u || (result & 0x8000u))
+      return 0;
+    if (result > 0x3c00u)
+      return 0x3c00u;
+  }
+  return result;
+}
+
 enum class PackedF32Op { ADD, MUL, FMA };
 
 enum class PackedBinaryOp { ADD, MUL, MIN, MAX, MINIMUM, MAXIMUM };

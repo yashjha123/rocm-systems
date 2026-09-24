@@ -1924,6 +1924,19 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             f'wf.fp_round_mode_{mode_suffix}(), wf.fp_denorm_mode_{mode_suffix}(), '
             f'inst_.omod, inst_.clamp{fp16_ovfl}{staged_rcp})'
         )
+        if (
+            precision == 'f16'
+            and operation_name in ('EXP2', 'LOG2')
+            and ctx.arch_name.lower() == 'rdna4'
+        ):
+            logarithm = str(operation_name == 'LOG2').lower()
+            # SemaAST represents F16 values as exactly promoted floats.
+            return (
+                f'amdgpu::fp_mode::rdna4_exp_log_f16({logarithm}, '
+                f'util::f32_to_f16({args[0]}), '
+                'wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl(), '
+                '(inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, inst_.omod, inst_.clamp)'
+            )
         if precision == 'f32' and operation_name in ('EXP2', 'LOG2'):
             logarithm = str(operation_name == 'LOG2').lower()
             return (
@@ -1976,7 +1989,11 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             f'amdgpu::transcendental::rsq_f16({args[0]}, '
             'wf.fp_denorm_mode_f16_f64())'
         )
-    if len(args) == 1 and callee in ('exp', 'exp2', 'log', 'log2') and node.ty == SemaType.F32:
+    if (
+        len(args) == 1
+        and callee in ('exp', 'exp2', 'log', 'log2')
+        and node.ty == SemaType.F32
+    ):
         logarithm = str(callee in ('log', 'log2')).lower()
         fallback = f'amdgpu::transcendental::{"log" if logarithm == "true" else "exp"}_f32({args[0]})'
         return (
@@ -2114,7 +2131,8 @@ def _lower_apply_omod(node: SemaNode, ctx: LoweringContext) -> str:
     )
     rcp_f32 = node.ty == SemaType.F32 and _contains_call(node.children[1], 'rcp')
     if node.ty == SemaType.F32 and any(
-        _contains_call(node.children[1], name) for name in ('exp', 'exp2', 'log', 'log2')
+        _contains_call(node.children[1], name)
+        for name in ('exp', 'exp2', 'log', 'log2')
     ):
         environment = (
             'std::optional<amdgpu::fp_mode::ScopedEnvironment> nearest; '

@@ -6164,6 +6164,14 @@ class CodeGenerator:
         has_abs = profile.has_abs_modifier(inst.enc_name)
         self._enc_name = enc_name
 
+        if self.isa_spec.arch_name.lower() == 'rdna4' and inst.name in (
+            'V_EXP_F16',
+            'V_LOG_F16',
+        ):
+            logarithm = str(inst.name == 'V_LOG_F16').lower()
+            e32 = str(not is_vop3).lower()
+            return f'  amdgpu::rdna4_exp_log::execute_vector_f16<{logarithm}, {e32}>(*this, wf);'
+
         # Try SemaAST pipeline for validated classes.
         from amdisa.sema_derive import derive_sema_block
         from amdisa.codegen.execute.sema_lower import (
@@ -6386,7 +6394,9 @@ class CodeGenerator:
                         )
                     else:
                         preamble = ''
-                        source = f'amdgpu::RegisterAccess(wf).read_lane({src_ops[0]}, lane)'
+                        source = (
+                            f'amdgpu::RegisterAccess(wf).read_lane({src_ops[0]}, lane)'
+                        )
                         write = f'amdgpu::RegisterAccess(wf).write_lane({dst_ops[0]}, lane, result);'
                     return (
                         '  uint64_t exec = wf.exec();\n'
@@ -12506,6 +12516,13 @@ class CodeGenerator:
                             or _local_true16_probe
                             or _renamed_vop3p_probe
                         )
+                        # The RDNA4 F16 EXP/LOG helper owns its SIMD dispatch;
+                        # host exp/log probes bypass its precision and MODE policy.
+                        if self.isa_spec.arch_name.lower() == 'rdna4' and inst.name in (
+                            'V_EXP_F16',
+                            'V_LOG_F16',
+                        ):
+                            _local_simd_probe = None
                         _local_simd_probe_body = ''
                         _local_scalar_body = _local_body
                         _local_execute_body = _local_scalar_body
@@ -12909,6 +12926,7 @@ class CodeGenerator:
                     ),
                     ('rocjitsu/isa/arch/amdgpu/shared/simd_glue.h', False),
                     ('rocjitsu/isa/arch/amdgpu/shared/fp_mode.h', False),
+                    ('rocjitsu/isa/arch/amdgpu/shared/rdna4_exp_log.h', False),
                     ('rocjitsu/isa/arch/amdgpu/shared/division.h', False),
                     ('rocjitsu/isa/arch/amdgpu/shared/cube.h', False),
                     ('util/except.h', False),
@@ -13496,6 +13514,7 @@ class CodeGenerator:
                 'optional': 'std::optional',
                 'rocjitsu/base/rj_compiler.h': 'RJ_NOINLINE',
                 'rocjitsu/isa/arch/amdgpu/shared/fp_mode.h': 'fp_mode::',
+                'rocjitsu/isa/arch/amdgpu/shared/rdna4_exp_log.h': 'rdna4_exp_log::',
                 'rocjitsu/isa/arch/amdgpu/shared/cube.h': 'cube::',
                 'rocjitsu/isa/arch/amdgpu/shared/division.h': (
                     'div_scale(',
