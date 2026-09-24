@@ -346,8 +346,10 @@ void VFmacLegacyF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(
         *this, wf, vdst, lane, std::bit_cast<uint32_t>([&]() {
+          amdgpu::fp_mode::detail::ScopedFenv environment(wf.fp_round_mode_f32());
           float v = [&]() {
-            float v = amdgpu::fp_mode::fma_f32(
+            amdgpu::fp_mode::detail::ScopedFenv environment(wf.fp_round_mode_f32());
+            float v = amdgpu::fp_mode::arithmetic<amdgpu::fp_mode::Arithmetic::FMA>(
                 [&]() {
                   float sv = std::bit_cast<float>(amdgpu::RegisterAccess(wf).read_lane(src0, lane));
                   if (inst_.abs & (1u << 0))
@@ -365,7 +367,9 @@ void VFmacLegacyF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
                   return sv;
                 }(),
                 std::bit_cast<float>(amdgpu::RegisterAccess(wf).read_lane(vdst, lane)),
-                wf.cu().arch(), wf.ieee_mode(), wf.fp_denorm_mode_f32());
+                wf.fp_round_mode_f32(), wf.fp_denorm_mode_f32(), wf.cu().arch(), wf.ieee_mode(),
+                (amdgpu::fp_mode::effective_omod(wf.cu().arch(), wf.fp_denorm_mode_f32(),
+                                                 wf.ieee_mode(), inst_.omod) != 0));
             if (std::isnan(v))
               return v;
             const uint32_t effective_omod = amdgpu::fp_mode::effective_omod(
@@ -492,8 +496,10 @@ void VFmaLegacyF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(
         *this, wf, vdst, lane, std::bit_cast<uint32_t>([&]() {
+          amdgpu::fp_mode::detail::ScopedFenv environment(wf.fp_round_mode_f32());
           float v = [&]() {
-            float v = amdgpu::fp_mode::fma_f32(
+            amdgpu::fp_mode::detail::ScopedFenv environment(wf.fp_round_mode_f32());
+            float v = amdgpu::fp_mode::arithmetic<amdgpu::fp_mode::Arithmetic::FMA>(
                 [&]() {
                   float sv = std::bit_cast<float>(amdgpu::RegisterAccess(wf).read_lane(src0, lane));
                   if (inst_.abs & (1u << 0))
@@ -518,7 +524,9 @@ void VFmaLegacyF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
                     sv = -sv;
                   return sv;
                 }(),
-                wf.cu().arch(), wf.ieee_mode(), wf.fp_denorm_mode_f32());
+                wf.fp_round_mode_f32(), wf.fp_denorm_mode_f32(), wf.cu().arch(), wf.ieee_mode(),
+                (amdgpu::fp_mode::effective_omod(wf.cu().arch(), wf.fp_denorm_mode_f32(),
+                                                 wf.ieee_mode(), inst_.omod) != 0));
             if (std::isnan(v))
               return v;
             const uint32_t effective_omod = amdgpu::fp_mode::effective_omod(
