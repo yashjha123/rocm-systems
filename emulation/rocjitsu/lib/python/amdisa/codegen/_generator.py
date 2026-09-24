@@ -6368,6 +6368,43 @@ class CodeGenerator:
                         lctx.true16_dst_select = f'{vop3_opsel} & 0x8u'
                     if inst.name in ('V_CVT_F16_FP8', 'V_CVT_F16_BF8'):
                         lctx.fp8_byte_select = f'({vop3_opsel} & 0x2u) >> 1'
+                if (
+                    cls == 'vector_unary'
+                    and inst.name == 'V_RCP_F16'
+                    and is_vop3
+                    and self.isa_spec.arch_name.lower() == 'rdna4'
+                ):
+                    if is_true16_vop3:
+                        preamble = '  uint32_t opsel = ::rocjitsu::amdgpu::vop3_opsel(inst_);\n'
+                        source = (
+                            f'::rocjitsu::amdgpu::read_vop3_true16_src('
+                            f'{src_ops[0]}, wf, lane, opsel, 0)'
+                        )
+                        write = (
+                            f'::rocjitsu::amdgpu::write_vop3_true16_dst('
+                            f'{dst_ops[0]}, wf, lane, opsel, result, true);'
+                        )
+                    else:
+                        preamble = ''
+                        source = f'amdgpu::RegisterAccess(wf).read_lane({src_ops[0]}, lane)'
+                        write = f'amdgpu::RegisterAccess(wf).write_lane({dst_ops[0]}, lane, result);'
+                    return (
+                        '  uint64_t exec = wf.exec();\n'
+                        f'{preamble}'
+                        '  uint32_t omod = amdgpu::fp_mode::effective_f16_omod(\n'
+                        '      wf.cu().arch(), wf.fp_denorm_mode_f16_f64(), wf.ieee_mode(), false, inst_.omod);\n'
+                        '  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {\n'
+                        '    if (!(exec & (1ULL << lane)))\n'
+                        '      continue;\n'
+                        f'    uint16_t src_bits = static_cast<uint16_t>({source});\n'
+                        '    uint16_t result = amdgpu::pseudo_scalar::execute_f16(\n'
+                        '        amdgpu::pseudo_scalar::Operation::RCP, util::f16_to_f32(src_bits),\n'
+                        '        (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0,\n'
+                        '        wf.fp_round_mode_f16_f64(), wf.fp_denorm_mode_f16_f64(),\n'
+                        '        omod, inst_.clamp, wf.fp16_ovfl(), true);\n'
+                        f'    {write}\n'
+                        '  }\n'
+                    )
                 if cls == 'vector_cndmask' and is_vop3 and len(src_ops) >= 3:
                     selector_read = f'amdgpu::read_wave_mask_scalar({src_ops[2]}, wf)'
                     lctx.vcc_read = selector_read
@@ -9579,6 +9616,12 @@ class CodeGenerator:
         enc_name: str | None = None,
         result_writer: str | None = None,
     ) -> str | None:
+        if (
+            self.isa_spec.arch_name.lower() == 'rdna4'
+            and inst is not None
+            and inst.name == 'V_RCP_F16'
+        ):
+            return None
         if sem is not None and inst is not None:
             uses_true16_probe = self._true16_vop3_info(
                 inst, sem, enc_name or inst.enc_name

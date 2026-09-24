@@ -1910,12 +1910,19 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
         operation_name = pseudo_scalar_operations[operation]
         mode_suffix = 'f32' if precision == 'f32' else 'f16_f64'
         fp16_ovfl = ', wf.fp16_ovfl()' if precision == 'f16' else ''
+        staged_rcp = (
+            ', true'
+            if precision == 'f16'
+            and operation_name == 'RCP'
+            and ctx.arch_name.lower() == 'rdna4'
+            else ''
+        )
         return (
             f'amdgpu::pseudo_scalar::execute_{precision}('
             f'amdgpu::pseudo_scalar::Operation::{operation_name}, {args[0]}, '
             f'(inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, '
             f'wf.fp_round_mode_{mode_suffix}(), wf.fp_denorm_mode_{mode_suffix}(), '
-            f'inst_.omod, inst_.clamp{fp16_ovfl})'
+            f'inst_.omod, inst_.clamp{fp16_ovfl}{staged_rcp})'
         )
 
     if len(args) == 1 and callee in (

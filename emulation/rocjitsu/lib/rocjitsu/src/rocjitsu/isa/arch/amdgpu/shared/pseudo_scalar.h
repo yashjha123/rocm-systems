@@ -370,10 +370,41 @@ inline uint32_t execute_f32(Operation operation, float source, bool absolute, bo
 /// @returns Raw F16 encoding in bits 15:0 with bits 31:16 cleared.
 inline uint32_t execute_f16(Operation operation, float source, bool absolute, bool negate,
                             uint32_t round_mode, uint32_t denorm_mode, uint32_t omod, bool clamp,
-                            bool fp16_ovfl) {
+                            bool fp16_ovfl, bool staged_rdna4_rcp = false) {
   source = detail::apply_source_modifiers(source, absolute, negate);
   source = detail::flush_input_f16(source, denorm_mode);
   source = detail::quiet_nan(source);
+  if (operation == Operation::RCP && staged_rdna4_rcp) {
+    // Physical RDNA4 rounds the reciprocal to F16 before OMOD. RCP uses
+    // nearest-even result rounding independently of MODE.FP_ROUND.
+    auto evaluated = detail::evaluate(operation, static_cast<double>(source));
+    if (clamp && omod == 0)
+      evaluated = detail::apply_output_modifiers(evaluated, 0, true);
+    uint16_t core = detail::round_f64_to_f16(evaluated, 0, fp16_ovfl);
+    if ((denorm_mode & 2u) == 0 && (core & 0x7c00u) == 0 && (core & 0x03ffu) != 0)
+      core &= 0x8000u;
+    if (omod == 0)
+      return core;
+
+    // Active OMOD flushes an intermediate subnormal and canonicalizes a
+    // preexisting zero. A new underflow during scaling retains its sign.
+    if ((core & 0x7c00u) == 0 && (core & 0x03ffu) != 0)
+      core &= 0x8000u;
+    if ((core & 0x7fffu) == 0)
+      core = 0;
+    if ((core & 0x7fffu) > 0x7c00u)
+      return clamp ? 0u : core;
+    constexpr double scales[] = {1.0, 2.0, 4.0, 0.5};
+    auto scaled =
+        detail::EvaluationResult{static_cast<double>(util::f16_to_f32(core)) * scales[omod & 3u],
+                                 detail::ResultProvenance::VALUE};
+    if (clamp)
+      scaled = detail::apply_output_modifiers(scaled, 0, true);
+    uint16_t result = detail::round_f64_to_f16(scaled, 0, fp16_ovfl);
+    if ((result & 0x7c00u) == 0 && (result & 0x03ffu) != 0)
+      result &= 0x8000u;
+    return result;
+  }
   const detail::EvaluationResult evaluated =
       operation == Operation::RSQ
           ? detail::EvaluationResult{util::amdgpu_rsq_f16(source, denorm_mode),
