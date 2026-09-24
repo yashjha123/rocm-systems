@@ -9,6 +9,8 @@
 #include "rocjitsu/code/rj_code.h"
 #include "rocjitsu/isa/arch/amdgpu/shared/division.h"
 #include "rocjitsu/isa/arch/amdgpu/shared/pseudo_scalar.h"
+#include "util/amdgpu_exp.h"
+#include "util/amdgpu_log.h"
 #include "util/data_types.h"
 
 #include <algorithm>
@@ -339,6 +341,36 @@ inline uint16_t fma_f32_to_bf16(float multiplicand, float multiplier, float adde
 
 /// @brief Isolate scalar or SIMD arithmetic from the caller's rounding and flush controls.
 using ScopedEnvironment = detail::ScopedFenv;
+
+/// Execute RDNA4 F32 EXP/LOG with the policy observed on physical gfx1201.
+/// Both vector and pseudo-scalar forms ignore rounding/denormal MODE fields.
+/// The integer mappings match physical gfx1201 for every F32 input at default MODE.
+/// Their rounded, flushed F32 core feeds OMOD; source modifiers and CLAMP surround it.
+inline uint32_t rdna4_exp_log_f32(bool logarithm, uint32_t source, bool absolute, bool negate,
+                                  uint32_t omod, bool clamp) {
+  if (absolute)
+    source &= 0x7fffffffu;
+  if (negate)
+    source ^= 0x80000000u;
+  uint32_t core =
+      logarithm ? util::detail::amdgpu_log_bits(source) : util::detail::amdgpu_exp_bits(source);
+  ScopedEnvironment nearest(0);
+  if ((omod & 3u) != 0) {
+    if ((core & 0x7fffffffu) == 0)
+      core = 0;
+    constexpr float scales[] = {1.0f, 2.0f, 4.0f, 0.5f};
+    core = std::bit_cast<uint32_t>(std::bit_cast<float>(core) * scales[omod & 3u]);
+    if ((core & 0x7f800000u) == 0)
+      core &= 0x80000000u;
+  }
+  if (clamp) {
+    if ((core & 0x80000000u) != 0 || (core & 0x7fffffffu) > 0x7f800000u)
+      return 0;
+    if (core > 0x3f800000u)
+      return 0x3f800000u;
+  }
+  return core;
+}
 
 enum class PackedF32Op { ADD, MUL, FMA };
 

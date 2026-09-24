@@ -1917,13 +1917,23 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             and ctx.arch_name.lower() == 'rdna4'
             else ''
         )
-        return (
+        fallback = (
             f'amdgpu::pseudo_scalar::execute_{precision}('
             f'amdgpu::pseudo_scalar::Operation::{operation_name}, {args[0]}, '
             f'(inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, '
             f'wf.fp_round_mode_{mode_suffix}(), wf.fp_denorm_mode_{mode_suffix}(), '
             f'inst_.omod, inst_.clamp{fp16_ovfl}{staged_rcp})'
         )
+        if precision == 'f32' and operation_name in ('EXP2', 'LOG2'):
+            logarithm = str(operation_name == 'LOG2').lower()
+            return (
+                '(wf.cu().arch() == ROCJITSU_CODE_ARCH_RDNA4 ? '
+                f'amdgpu::fp_mode::rdna4_exp_log_f32({logarithm}, '
+                f'std::bit_cast<uint32_t>({args[0]}), '
+                '(inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, inst_.omod, inst_.clamp)'
+                f' : {fallback})'
+            )
+        return fallback
 
     if len(args) == 1 and callee in (
         'cvt_f32_fp8',
@@ -1965,6 +1975,14 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
         return (
             f'amdgpu::transcendental::rsq_f16({args[0]}, '
             'wf.fp_denorm_mode_f16_f64())'
+        )
+    if len(args) == 1 and callee in ('exp', 'exp2', 'log', 'log2') and node.ty == SemaType.F32:
+        logarithm = str(callee in ('log', 'log2')).lower()
+        fallback = f'amdgpu::transcendental::{"log" if logarithm == "true" else "exp"}_f32({args[0]})'
+        return (
+            '(wf.cu().arch() == ROCJITSU_CODE_ARCH_RDNA4 ? '
+            f'std::bit_cast<float>(amdgpu::fp_mode::rdna4_exp_log_f32({logarithm}, '
+            f'std::bit_cast<uint32_t>({args[0]}), false, false, 0, false)) : {fallback})'
         )
     if len(args) == 1 and callee in _INLINE_UNARY_OPS:
         return _INLINE_UNARY_OPS[callee].format(args[0])
@@ -2095,6 +2113,13 @@ def _lower_apply_omod(node: SemaNode, ctx: LoweringContext) -> str:
         replace(ctx, fma_flush_output=f'({omod_expr} != 0)') if fma_f32 else ctx,
     )
     rcp_f32 = node.ty == SemaType.F32 and _contains_call(node.children[1], 'rcp')
+    if node.ty == SemaType.F32 and any(
+        _contains_call(node.children[1], name) for name in ('exp', 'exp2', 'log', 'log2')
+    ):
+        environment = (
+            'std::optional<amdgpu::fp_mode::ScopedEnvironment> nearest; '
+            'if (wf.cu().arch() == ROCJITSU_CODE_ARCH_RDNA4) nearest.emplace(0); '
+        )
     if node.ty in (SemaType.F32, SemaType.F64) and any(
         child.kind == SemaNodeKind.LDEXP for child in node.children[1].walk()
     ):

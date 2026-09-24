@@ -164,6 +164,8 @@ struct PseudoScalarSpecialCase {
   std::string_view expected_operand_name;
   Vop3EncodingOptions encoding;
   uint32_t mode = 0;
+  // Physical gfx1201 expectations where MODE behavior differs from the generic helper.
+  std::optional<uint32_t> rdna4_expected = std::nullopt;
 };
 
 constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
@@ -191,8 +193,15 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      {.source_opsel = true},
      amdgpu::Wavefront::FP16_OVFL_BIT},
     {"f32_input_denorm_flush", "v_s_log_f32", 0x00000001u, 0xFF800000u, "", {}},
-    {"f32_input_denorm_allow", "v_s_log_f32", 0x00000001u, f32_bits(-149.0f), "", {}, 1u << 4},
-    {"f32_output_denorm_allow", "v_s_exp_f32", f32_bits(-149.0f), 0x00000001u, "", {}, 1u << 5},
+    {"f32_input_denorm_allow",
+     "v_s_log_f32",
+     0x00000001u,
+     f32_bits(-149.0f),
+     "",
+     {},
+     1u << 4,
+     0xFF800000u},
+    {"f32_output_denorm_allow", "v_s_exp_f32", f32_bits(-149.0f), 0x00000001u, "", {}, 1u << 5, 0u},
     {"f32_ignores_f16_output_denorm_mode",
      "v_s_exp_f32",
      f32_bits(-149.0f),
@@ -214,7 +223,14 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      "",
      {.source_opsel = true},
      1u << 7},
-    {"f32_round_toward_positive", "v_s_exp_f32", f32_bits(0.5f), 0x3FB504F4u, "", {}, 1u},
+    {"f32_round_toward_positive",
+     "v_s_exp_f32",
+     f32_bits(0.5f),
+     0x3FB504F4u,
+     "",
+     {},
+     1u,
+     0x3FB504F3u},
     {"f16_round_toward_positive",
      "v_s_exp_f16",
      0xCAFE3800u,
@@ -246,7 +262,8 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x0000B556u,
      "",
      {.source_opsel = true},
-     2u << 2},
+     2u << 2,
+     0x0000B555u},
     {"f16_negative_round_toward_zero",
      "v_s_rcp_f16",
      0xCAFEC200u,
@@ -260,14 +277,16 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x7F7FFFFFu,
      "",
      {},
-     2u},
+     2u,
+     0x7F800000u},
     {"f32_finite_overflow_round_toward_zero",
      "v_s_exp_f32",
      f32_bits(2000.0f),
      0x7F7FFFFFu,
      "",
      {},
-     3u},
+     3u,
+     0x7F800000u},
     {"f32_finite_overflow_round_to_nearest", "v_s_exp_f32", f32_bits(1024.0f), 0x7F800000u, "", {}},
     {"f32_finite_overflow_round_toward_positive",
      "v_s_exp_f32",
@@ -282,7 +301,8 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x00000001u,
      "",
      {},
-     1u | (1u << 5)},
+     1u | (1u << 5),
+     0u},
     {"f32_finite_underflow_round_toward_negative",
      "v_s_exp_f32",
      f32_bits(-2000.0f),
@@ -323,14 +343,16 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x7F7FFFFFu,
      "",
      {},
-     2u},
+     2u,
+     0x7F800000u},
     {"f32_destination_overflow_round_toward_zero",
      "v_s_exp_f32",
      f32_bits(128.0f),
      0x7F7FFFFFu,
      "",
      {},
-     3u},
+     3u,
+     0x7F800000u},
     {"f32_destination_underflow_round_to_nearest",
      "v_s_exp_f32",
      f32_bits(-150.0f),
@@ -344,7 +366,8 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x00000001u,
      "",
      {},
-     1u | (1u << 5)},
+     1u | (1u << 5),
+     0u},
     {"f32_destination_underflow_round_toward_negative",
      "v_s_exp_f32",
      f32_bits(-150.0f),
@@ -460,14 +483,16 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      0x00007BFFu,
      "",
      {.source_opsel = true, .omod = 2},
-     2u << 2},
+     2u << 2,
+     0x00007C00u},
     {"f16_rcp_omod_destination_overflow_round_toward_zero",
      "v_s_rcp_f16",
      0xCAFE0400u,
      0x00007BFFu,
      "",
      {.source_opsel = true, .omod = 2},
-     3u << 2},
+     3u << 2,
+     0x00007C00u},
     {"f32_true_positive_infinity", "v_s_exp_f32", 0x7F800000u, 0x7F800000u, "", {}, 3u},
     {"f32_true_negative_infinity", "v_s_exp_f32", 0xFF800000u, 0x00000000u, "", {}, 1u | (1u << 5)},
     {"f32_divide_by_zero", "v_s_rcp_f32", 0x00000000u, 0x7F800000u, "", {}},
@@ -1030,7 +1055,9 @@ TEST_P(PseudoScalarSpecialExecTest, CoversLiteralModifierAndModeBehavior) {
       fixture.compute_unit->execute_instruction(instruction.get(), *fixture.wavefront).succeeded());
 
   EXPECT_EQ(fixture.compute_unit->read_sgpr(fixture.sgpr_base() + kDestinationSgpr),
-            test_case.expected);
+            profile.arch == ROCJITSU_CODE_ARCH_RDNA4
+                ? test_case.rdna4_expected.value_or(test_case.expected)
+                : test_case.expected);
   EXPECT_EQ(fixture.wavefront->exec(), 0u);
   EXPECT_EQ(fixture.wavefront->mode_raw(), test_case.mode);
 }
@@ -1068,7 +1095,8 @@ TEST(PseudoScalarModeIntegrationTest, SetregInstructionsUpdateModesConsumedByPse
     EXPECT_TRUE(
         fixture.compute_unit->execute_instruction(exp.get(), *fixture.wavefront).succeeded());
     EXPECT_EQ(fixture.wavefront->mode_raw(), 1u);
-    EXPECT_EQ(fixture.compute_unit->read_sgpr(fixture.sgpr_base() + kDestinationSgpr), 0x3FB504F4u);
+    EXPECT_EQ(fixture.compute_unit->read_sgpr(fixture.sgpr_base() + kDestinationSgpr),
+              profile.arch == ROCJITSU_CODE_ARCH_RDNA4 ? 0x3FB504F3u : 0x3FB504F4u);
 
     const BaseEncodingWords set_denorm_words =
         encode_sopk(profile.setreg_imm_op, 0, encode_hwreg(kModeHwreg, 6, 2), 1u);

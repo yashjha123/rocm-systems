@@ -2602,6 +2602,12 @@ def simd_probe_line(
     probe = _simd_probe_line(
         template_name, true16_vop3=true16_vop3, result_writer=result_writer
     )
+    if probe is not None and template_name in (
+        'v_exp_f32_vop1', 'v_exp_f32_vop3', 'v_log_f32_vop1', 'v_log_f32_vop3'
+    ):
+        # RDNA4 shares its fixed MODE/special-value policy with pseudo-scalars.
+        # The generic host-SIMD transcendental path does not implement it.
+        return f'  if (wf.cu().arch() != ROCJITSU_CODE_ARCH_RDNA4) {{\n{probe}\n  }}'
     return _guard_mode_arithmetic_probe(template_name, probe)
 
 
