@@ -4,8 +4,11 @@
 #ifndef UTIL_SIMD_H_
 #define UTIL_SIMD_H_
 
+#include "util/amdgpu_exp.h"
+#include "util/amdgpu_log.h"
 #include "util/amdgpu_rcp.h"
 #include "util/amdgpu_rsq.h"
+#include "util/amdgpu_sqrt.h"
 #include "util/bit.h"
 
 #include <bit>
@@ -863,29 +866,18 @@ inline native<float> rsq_f16_simd(native<float> a, uint32_t denorm_mode) {
 }
 
 inline native<float> sqrt_f32_simd(native<float> a) {
-  native<float> x = flush_denorm_f32_simd(a);
-  native<float> r = stdx::sqrt(x);
-  stdx::where(x < native<float>(0.0f), r) = kQNaN;
-  stdx::where(stdx::isnan(a), r) =
-      std::bit_cast<native<float>>(std::bit_cast<native<uint32_t>>(a) | 0x00400000u);
-  return r;
+  return map_native_convert_scalar<float, float>(
+      a, [](float value) { return amdgpu_sqrt_f32(value); });
 }
 
 inline native<float> log_f32_simd(native<float> a) {
-  native<float> x = flush_denorm_f32_simd(a);
-  native<float> r = stdx::log2(x); // input-flush only; scalar log_f32 has no out-flush
-  stdx::where(x < native<float>(0.0f), r) = kQNaN;
-  stdx::where(stdx::isnan(a), r) =
-      std::bit_cast<native<float>>(std::bit_cast<native<uint32_t>>(a) | 0x00400000u);
-  return r;
+  return map_native_convert_scalar<float, float>(a,
+                                                 [](float value) { return amdgpu_log_f32(value); });
 }
 
 inline native<float> exp_f32_simd(native<float> a) {
-  native<float> x = flush_denorm_f32_simd(a);
-  native<float> r = flush_denorm_f32_simd(stdx::exp2(x));
-  stdx::where(stdx::isnan(a), r) =
-      std::bit_cast<native<float>>(std::bit_cast<native<uint32_t>>(a) | 0x00400000u);
-  return r;
+  return map_native_convert_scalar<float, float>(a,
+                                                 [](float value) { return amdgpu_exp_f32(value); });
 }
 
 /// Branchless SWAR population count over a uint32 vector. Each lane holds

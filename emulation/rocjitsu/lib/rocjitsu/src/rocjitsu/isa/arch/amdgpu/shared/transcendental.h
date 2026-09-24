@@ -11,14 +11,18 @@
 /// They are used by the simulator's execute() bodies for V_RCP_F32,
 /// V_RSQ_F32, V_RSQ_F16, V_SQRT_F32, V_LOG_F32, V_EXP_F32, V_SIN_F32, V_COS_F32,
 /// V_RCP_F64, V_RSQ_F64, V_SQRT_F64.
-/// F32 reciprocal and F32/F16 reciprocal square root match the captured RDNA3/4 mappings.
-/// F16 RSQ applies the half input-denormal policy after promotion to F32.
+/// F32 exponential, logarithm, reciprocal, reciprocal square root and square root match the
+/// captured RDNA3/4 mappings. F16 RSQ applies the half input-denormal policy after promotion to
+/// F32.
 ///
 /// All functions handle special cases (NaN, Inf, denormals, ±0) per the
 /// AMD ISA specification.
 
+#include "util/amdgpu_exp.h"
+#include "util/amdgpu_log.h"
 #include "util/amdgpu_rcp.h"
 #include "util/amdgpu_rsq.h"
+#include "util/amdgpu_sqrt.h"
 
 #include <bit>
 #include <cmath>
@@ -33,7 +37,7 @@ namespace transcendental {
 ///
 /// @details AMD transcendental micro-ops always operate in FTZ mode
 /// regardless of the shader's denorm mode.  This helper reproduces
-/// that behaviour for sqrt, exp, and log.
+/// that behaviour; the shared mappings below already include it.
 inline float flush_denorm_f32(float x) {
   uint32_t bits = std::bit_cast<uint32_t>(x);
   if ((bits & 0x7F800000u) == 0 && (bits & 0x007FFFFFu) != 0)
@@ -50,41 +54,14 @@ inline float rsq_f32(float x) { return util::amdgpu_rsq_f32(x); }
 /// @brief F16 reciprocal square root in the promoted F32 domain, with F16 input policy.
 inline float rsq_f16(float x, uint32_t denorm_mode) { return util::amdgpu_rsq_f16(x, denorm_mode); }
 
-/// @brief sqrt(x) (single-precision square root, correctly-rounded).
-inline float sqrt_f32(float x) {
-  x = flush_denorm_f32(x);
-  if (std::isnan(x))
-    return std::bit_cast<float>(std::bit_cast<uint32_t>(x) | 0x00400000u);
-  if (x < 0.0f)
-    return std::numeric_limits<float>::quiet_NaN();
-  return std::sqrt(x);
-}
+/// @brief AMD single-precision square root matching physical RDNA3/4 (within 1 ULP).
+inline float sqrt_f32(float x) { return util::amdgpu_sqrt_f32(x); }
 
-/// @brief log2(x) (single-precision base-2 logarithm, ~1 ULP).
-inline float log_f32(float x) {
-  x = flush_denorm_f32(x);
-  if (std::isnan(x))
-    return std::bit_cast<float>(std::bit_cast<uint32_t>(x) | 0x00400000u);
-  if (x == 0.0f)
-    return -std::numeric_limits<float>::infinity();
-  if (x < 0.0f)
-    return std::numeric_limits<float>::quiet_NaN();
-  if (std::isinf(x))
-    return std::numeric_limits<float>::infinity();
-  return std::log2(x);
-}
+/// @brief AMD single-precision base-2 logarithm matching physical RDNA3/4 (within 1 ULP).
+inline float log_f32(float x) { return util::amdgpu_log_f32(x); }
 
-/// @brief 2^x (single-precision base-2 exponential, ~1 ULP).
-inline float exp_f32(float x) {
-  x = flush_denorm_f32(x);
-  if (std::isnan(x))
-    return std::bit_cast<float>(std::bit_cast<uint32_t>(x) | 0x00400000u);
-  if (x == -std::numeric_limits<float>::infinity())
-    return 0.0f;
-  if (x == std::numeric_limits<float>::infinity())
-    return std::numeric_limits<float>::infinity();
-  return flush_denorm_f32(std::exp2(x));
-}
+/// @brief AMD single-precision base-2 exponential matching physical RDNA3/4 (within 1 ULP).
+inline float exp_f32(float x) { return util::amdgpu_exp_f32(x); }
 
 /// @brief sin(2*pi*x) (single-precision, ~1 ULP).
 ///
