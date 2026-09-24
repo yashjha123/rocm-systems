@@ -3571,6 +3571,41 @@ def test_generated_pseudo_scalar_vop3_paths_ignore_exec_and_f16_opsel(
     assert 'amdgpu::pseudo_scalar::' not in ordinary_exp
 
 
+def test_generated_rdna_transcendentals_use_bit_exact_pipeline(
+    amdgpu_generated_root: Path, execute_shared_path: Path
+):
+    cases = [
+        ('VExpF32Vop1', 'EXP, false, true'),
+        ('VLogF16Vop1', 'LOG, true, true'),
+        ('VRcpF32Vop3', 'RCP, false, false'),
+        ('VRsqF16Vop3', 'RSQ, true, false'),
+        ('VSqrtF32Vop3', 'SQRT, false, false'),
+    ]
+    for arch in ('rdna3', 'rdna3_5', 'rdna4'):
+        for source_name in ('vop1_exec.cpp', 'vop3_exec.cpp'):
+            source = ''.join(
+                (amdgpu_generated_root / arch / source_name).read_text().split()
+            )
+            for class_name, arguments in cases:
+                if class_name.endswith('Vop1') != (source_name == 'vop1_exec.cpp'):
+                    continue
+                call = (
+                    'amdgpu::transcendental::execute_valu<'
+                    f'amdgpu::transcendental::Operation::{arguments}>(*this,wf);'
+                ).replace(' ', '')
+                start = source.index(f'void{class_name}::execute_impl(')
+                body = source[start : source.index('}', source.index(call, start))]
+                assert call in body, (arch, class_name)
+                assert 'ROCJITSU_TRY_SIMD' not in body
+                assert 'round_f16_result' not in body
+    # Other profiles keep the shared templates and their SIMD probes.
+    execute_shared = execute_shared_path.read_text()
+    assert 'inline void execute_v_exp_f32_vop1(' in execute_shared
+    cdna3 = (amdgpu_generated_root / 'cdna3' / 'vop1_exec.cpp').read_text()
+    assert 'amdgpu::execute_v_exp_f32_vop1(*this, wf);' in cdna3
+    assert 'transcendental::execute_valu' not in cdna3
+
+
 def test_generated_scalar_f16_arithmetic_does_not_consume_fp16_ovfl(
     execute_shared_path: Path,
 ):

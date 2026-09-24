@@ -552,6 +552,8 @@ add_executable(
     shared_infra_test.cpp
     scalar_buffer_test.cpp
     transcendental_test.cpp
+    transcendental_valu_test.cpp
+    transcendental_decode_test.cpp
     amdgpu_elf_test_support.cpp
     analysis/liveness_test.cpp
     patch/spill_manager_test.cpp

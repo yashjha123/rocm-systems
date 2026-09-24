@@ -53,20 +53,33 @@ TEST(Gfx1250SimulationTest, DispatchesEndpgmThroughConfig) {
   EXPECT_EQ(sim.cu()->num_wfs(), 0u);
 }
 
-TEST(Gfx1250SimulationTest, DispatchedModeSetterControlsPseudoScalarRounding) {
-  constexpr uint32_t kExpectedRoundTowardPositive = 0x3FB504F4u;
-  const uint32_t code[] = {
-      0xB9800801u, // s_setreg_imm32_b32 hwreg(HW_REG_MODE, 0, 2), 1
-      0x00000001u,
-      0xD6800004u, // v_s_exp_f32 s4, 0.5
-      0x000000FFu, 0x3F000000u, S_ENDPGM_GFX12,
+TEST(Gfx1250SimulationTest, DispatchedModeSetterControlsPseudoScalarDenormals) {
+  // Transcendentals ignore FP_ROUND, so observe the F16 input-denormal field instead.
+  constexpr uint32_t kFlushedSubnormalLog = 0xFC00u;
+  constexpr uint32_t kSubnormalLog = 0xCE00u;
+  const uint32_t flushing_code[] = {
+      0xB9800981u, // s_setreg_imm32_b32 hwreg(HW_REG_MODE, 6, 2), 0
+      0x00000000u,
+      0xD6830004u, // v_s_log_f16 s4, 0x0001
+      0x000000FFu, 0x00000001u, S_ENDPGM_GFX12,
+  };
+  const uint32_t preserving_code[] = {
+      0xB9800981u, // s_setreg_imm32_b32 hwreg(HW_REG_MODE, 6, 2), 3
+      0x00000003u,
+      0xD6830004u, // v_s_log_f16 s4, 0x0001
+      0x000000FFu, 0x00000001u, S_ENDPGM_GFX12,
   };
 
-  Gfx1250Sim sim;
-  const auto *snapshot = dispatch_one_wave(sim, code, std::size(code));
+  Gfx1250Sim flushing_sim;
+  const auto *flushing = dispatch_one_wave(flushing_sim, flushing_code, std::size(flushing_code));
+  ASSERT_NE(flushing, nullptr);
+  EXPECT_EQ(flushing->sgpr(4), kFlushedSubnormalLog);
 
-  ASSERT_NE(snapshot, nullptr);
-  EXPECT_EQ(snapshot->sgpr(4), kExpectedRoundTowardPositive);
+  Gfx1250Sim preserving_sim;
+  const auto *preserving =
+      dispatch_one_wave(preserving_sim, preserving_code, std::size(preserving_code));
+  ASSERT_NE(preserving, nullptr);
+  EXPECT_EQ(preserving->sgpr(4), kSubnormalLog);
 }
 
 TEST(Gfx1250SimulationTest, MultiWaveDispatchHonorsPackedTidComponentCount) {

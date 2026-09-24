@@ -192,6 +192,17 @@ _LITERAL_CAPABLE_OPERAND_TYPES = frozenset(
 )
 
 
+# RDNA3/RDNA4 V_EXP/V_LOG/V_RCP/V_RSQ/V_SQRT F16/F32 execute through the shared
+# bit-exact pipeline measured on physical gfx1201 (transcendental_valu.h). The
+# operation enumerator and whether the result is F16.
+_BIT_EXACT_TRANSCENDENTALS: dict[str, tuple[str, bool]] = {
+    f'V_{name}_{dtype.upper()}': (name, dtype == 'f16')
+    for name in ('EXP', 'LOG', 'RCP', 'RSQ', 'SQRT')
+    for dtype in ('f16', 'f32')
+}
+_BIT_EXACT_TRANSCENDENTAL_ARCHES = frozenset({'rdna3', 'rdna3_5', 'rdna4'})
+
+
 def _exec_mask_flag_stmts(sem) -> list[str]:
     """Return ``flags_ |= ...;`` statements for EXEC instruction metadata.
 
@@ -6139,6 +6150,21 @@ class CodeGenerator:
             is not None
         )
 
+    def _uses_bit_exact_transcendental(
+        self, inst: Instruction, sem: InstructionSemantics | None
+    ) -> bool:
+        """Whether a vector transcendental uses the hardware-matched pipeline.
+
+        Its execute body owns SIMD dispatch and modifiers, so it takes no
+        generated SIMD probe and is not shared with other profiles.
+        """
+        return (
+            sem is not None
+            and sem.semantic_class == 'vector_unary'
+            and inst.name in _BIT_EXACT_TRANSCENDENTALS
+            and self.isa_spec.arch_name in _BIT_EXACT_TRANSCENDENTAL_ARCHES
+        )
+
     def _gen_execute_body(
         self,
         inst: Instruction,
@@ -6163,6 +6189,14 @@ class CodeGenerator:
         # no abs modifier field.
         has_abs = profile.has_abs_modifier(inst.enc_name)
         self._enc_name = enc_name
+
+        if self._uses_bit_exact_transcendental(inst, sem):
+            operation, is_f16 = _BIT_EXACT_TRANSCENDENTALS[inst.name]
+            return (
+                '  amdgpu::transcendental::execute_valu<'
+                f'amdgpu::transcendental::Operation::{operation}, '
+                f'{str(is_f16).lower()}, {str(not is_vop3).lower()}>(*this, wf);'
+            )
 
         # Try SemaAST pipeline for validated classes.
         from amdisa.sema_derive import derive_sema_block
@@ -12408,6 +12442,9 @@ class CodeGenerator:
                         _portable_probe = self._can_force_shared_simd_probe(
                             inst, enc.enc_name
                         )
+                        if self._uses_bit_exact_transcendental(inst, sem):
+                            can_share = False
+                            _portable_probe = False
                         if not body_throws and (can_share or _portable_probe):
                             self._shared_execute_candidates[
                                 (inst.mnemonic, enc.enc_name)
@@ -12455,6 +12492,9 @@ class CodeGenerator:
                             if self.generated_dir_name in ('cdna5', 'cdna4', 'rdna4')
                             else None
                         )
+                        if self._uses_bit_exact_transcendental(inst, sem):
+                            _coverage_probe = None
+                            _local_true16_probe = None
                         if _coverage_probe:
                             can_share = False
                             _portable_probe = False
@@ -13016,6 +13056,16 @@ class CodeGenerator:
                             False,
                         )
                     )
+                if any(
+                    'transcendental::execute_valu' in str(impl)
+                    for impl in class_func_impls.model + class_func_impls.execution
+                ):
+                    cpp_includes.append(
+                        (
+                            'rocjitsu/isa/arch/amdgpu/shared/transcendental_exec.h',
+                            False,
+                        )
+                    )
                 if has_sem:
                     cpp_includes.extend(
                         [
@@ -13460,6 +13510,9 @@ class CodeGenerator:
                     'div_fixup(',
                 ),
                 'rocjitsu/isa/arch/amdgpu/shared/pseudo_scalar.h': 'pseudo_scalar::',
+                'rocjitsu/isa/arch/amdgpu/shared/transcendental_exec.h': (
+                    'transcendental::execute_valu'
+                ),
             }
             result: list[tuple[str, bool]] = []
             for include, system in cpp_includes:
@@ -13915,6 +13968,7 @@ class CodeGenerator:
             '#include "rocjitsu/isa/arch/amdgpu/shared/alu_exceptions.h"',
             '#include "rocjitsu/isa/arch/amdgpu/shared/transcendental.h"',
             '#include "rocjitsu/isa/arch/amdgpu/shared/pseudo_scalar.h"',
+            '#include "rocjitsu/isa/arch/amdgpu/shared/transcendental_exec.h"',
             '#include "rocjitsu/isa/arch/amdgpu/shared/fp_mode.h"',
             '#include "rocjitsu/isa/arch/amdgpu/shared/graphics_instructions.h"',
             '#include "rocjitsu/isa/arch/amdgpu/shared/division.h"',

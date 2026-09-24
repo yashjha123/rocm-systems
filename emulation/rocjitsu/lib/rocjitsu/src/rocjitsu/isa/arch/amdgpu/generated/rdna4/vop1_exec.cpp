@@ -11,6 +11,7 @@
 #include "rocjitsu/isa/arch/amdgpu/shared/fp_mode.h"
 #include "rocjitsu/isa/arch/amdgpu/shared/simd_glue.h"
 #include "rocjitsu/isa/arch/amdgpu/shared/transcendental.h"
+#include "rocjitsu/isa/arch/amdgpu/shared/transcendental_exec.h"
 #include "rocjitsu/vm/amdgpu/register_access.h"
 #include "rocjitsu/vm/amdgpu/wavefront.h"
 #include "util/data_types.h"
@@ -745,7 +746,8 @@ void VExpF32Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_exp_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::EXP, false, true>(*this,
+                                                                                            wf);
 }
 
 RJ_NOINLINE void VExpF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -764,7 +766,8 @@ RJ_NOINLINE void VExpF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_exp_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::EXP, false, true>(*this,
+                                                                                            wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -773,7 +776,8 @@ void VLogF32Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_log_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::LOG, false, true>(*this,
+                                                                                            wf);
 }
 
 RJ_NOINLINE void VLogF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -792,7 +796,8 @@ RJ_NOINLINE void VLogF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_log_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::LOG, false, true>(*this,
+                                                                                            wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -801,7 +806,8 @@ void VRcpF32Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_rcp_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RCP, false, true>(*this,
+                                                                                            wf);
 }
 
 RJ_NOINLINE void VRcpF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -820,7 +826,8 @@ RJ_NOINLINE void VRcpF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_rcp_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RCP, false, true>(*this,
+                                                                                            wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -857,7 +864,8 @@ void VRsqF32Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_rsq_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RSQ, false, true>(*this,
+                                                                                            wf);
 }
 
 RJ_NOINLINE void VRsqF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -876,7 +884,8 @@ RJ_NOINLINE void VRsqF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_rsq_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RSQ, false, true>(*this,
+                                                                                            wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -889,7 +898,8 @@ void VSqrtF32Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_sqrt_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::SQRT, false, true>(*this,
+                                                                                             wf);
 }
 
 RJ_NOINLINE void VSqrtF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -908,7 +918,8 @@ RJ_NOINLINE void VSqrtF32Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_sqrt_f32_vop1(*this, wf);
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::SQRT, false, true>(*this,
+                                                                                             wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -1822,31 +1833,8 @@ void VRcpF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::rcp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RCP, true, true>(*this,
+                                                                                           wf);
 }
 
 RJ_NOINLINE void VRcpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -1865,31 +1853,8 @@ RJ_NOINLINE void VRcpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::rcp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RCP, true, true>(*this,
+                                                                                           wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -1898,31 +1863,8 @@ void VSqrtF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::sqrt_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::sqrt_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::sqrt_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::SQRT, true, true>(*this,
+                                                                                            wf);
 }
 
 RJ_NOINLINE void VSqrtF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -1941,31 +1883,8 @@ RJ_NOINLINE void VSqrtF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::sqrt_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::sqrt_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::sqrt_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::SQRT, true, true>(*this,
+                                                                                            wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -1974,34 +1893,8 @@ void VRsqF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([&wf](auto a) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::rsq_f16_simd(util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64()));
-            })(a);
-          return ([&wf](auto a) {
-            return util::f32_to_f16_simd(
-                util::rsq_f16_simd(util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64()));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::rsq_f16(util::f16_to_f32(static_cast<uint16_t>(
-                                                amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                                            wf.fp_denorm_mode_f16_f64()),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RSQ, true, true>(*this,
+                                                                                           wf);
 }
 
 RJ_NOINLINE void VRsqF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -2020,34 +1913,8 @@ RJ_NOINLINE void VRsqF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([&wf](auto a) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::rsq_f16_simd(util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64()));
-            })(a);
-          return ([&wf](auto a) {
-            return util::f32_to_f16_simd(
-                util::rsq_f16_simd(util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64()));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::rsq_f16(util::f16_to_f32(static_cast<uint16_t>(
-                                                amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                                            wf.fp_denorm_mode_f16_f64()),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::RSQ, true, true>(*this,
+                                                                                           wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -2056,31 +1923,8 @@ void VLogF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::log_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::log_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::log_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::LOG, true, true>(*this,
+                                                                                           wf);
 }
 
 RJ_NOINLINE void VLogF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -2099,31 +1943,8 @@ RJ_NOINLINE void VLogF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::log_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::log_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::log_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::LOG, true, true>(*this,
+                                                                                           wf);
   dpp_write_mask_scope_.restore();
 }
 
@@ -2132,31 +1953,8 @@ void VExpF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::exp_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::exp_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::exp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::EXP, true, true>(*this,
+                                                                                           wf);
 }
 
 RJ_NOINLINE void VExpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -2175,31 +1973,8 @@ RJ_NOINLINE void VExpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  auto &inst = *this;
-  if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
-        return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
-          if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::exp_f32_simd(util::f16_to_f32_simd(a)));
-            })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::exp_f32_simd(util::f16_to_f32_simd(a)));
-          })(a);
-        })(std::bit_cast<util::native<uint32_t>>(a)));
-      }))
-    return;
-  uint64_t exec = wf.exec();
-  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
-    if (!(exec & (1ULL << lane)))
-      continue;
-    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
-        *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            amdgpu::transcendental::exp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
-            wf.fp16_ovfl()));
-  }
+  amdgpu::transcendental::execute_valu<amdgpu::transcendental::Operation::EXP, true, true>(*this,
+                                                                                           wf);
   dpp_write_mask_scope_.restore();
 }
 
