@@ -2087,6 +2087,7 @@ def _lower_apply_omod(node: SemaNode, ctx: LoweringContext) -> str:
         node.children[1],
         replace(ctx, fma_flush_output=f'({omod_expr} != 0)') if fma_f32 else ctx,
     )
+    rcp_f32 = node.ty == SemaType.F32 and _contains_call(node.children[1], 'rcp')
     if node.ty in (SemaType.F32, SemaType.F64) and any(
         child.kind == SemaNodeKind.LDEXP for child in node.children[1].walk()
     ):
@@ -2095,16 +2096,21 @@ def _lower_apply_omod(node: SemaNode, ctx: LoweringContext) -> str:
         f'[&]() {{ {environment}{fp_type} v = {rhs};'
         + (' if (std::isnan(v)) return v;' if fma_f32 else '')
         + f' const uint32_t effective_omod = {omod_expr};'
+        + (' const float unscaled = v;' if rcp_f32 else '')
         + (
             ' v = amdgpu::fp_mode::finalize_omod_f32(v, effective_omod);'
             if fma_f32
             else ''
         )
         + f' if (effective_omod == 1) v *= 2.0{suffix};'
-        f' else if (effective_omod == 2) v *= 4.0{suffix};'
-        f' else if (effective_omod == 3) v *= 0.5{suffix};'
-        f' v = amdgpu::fp_mode::finalize_omod_{"f64" if wide_result else "f32"}(v, effective_omod);'
-        f' return v; }}()'
+        + f' else if (effective_omod == 2) v *= 4.0{suffix};'
+        + f' else if (effective_omod == 3) v *= 0.5{suffix};'
+        + (
+            ' v = amdgpu::fp_mode::finalize_rcp_omod_f32(unscaled, v, effective_omod);'
+            if rcp_f32
+            else f' v = amdgpu::fp_mode::finalize_omod_{"f64" if wide_result else "f32"}(v, effective_omod);'
+        )
+        + f' return v; }}()'
     )
 
 

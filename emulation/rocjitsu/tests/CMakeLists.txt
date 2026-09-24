@@ -661,6 +661,7 @@ add_executable(
     simd_correctness/vop3p_fma_mix_simd_correctness_test.cpp
     simd_correctness/vop3p_mov_b32_simd_correctness_test.cpp
     simd_correctness/vop3p_dot_simd_correctness_test.cpp
+    rcp_f32_omod_test.cpp
     execution_plugin_test.cpp
     plugin_config_resolver_test.cpp
     plugin_loader_test.cpp

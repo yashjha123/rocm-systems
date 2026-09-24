@@ -579,7 +579,8 @@ util::native<double> apply_vop3_src_mod_f64(util::native<double> v, uint32_t abs
 /// the `_f32`/`_f64` wrappers below name the two lane types the VOP3 paths use.
 template <typename T>
 util::native<T> apply_vop3_dst_mod(util::native<T> v, uint32_t omod, uint32_t clamp,
-                                   bool clamp_nan_to_zero) {
+                                   bool clamp_nan_to_zero,
+                                   bool preserve_f32_underflow_sign = false) {
   const auto unscaled = v;
   if (omod == 1)
     v = v * T(2);
@@ -621,7 +622,10 @@ util::native<T> apply_vop3_dst_mod(util::native<T> v, uint32_t omod, uint32_t cl
       U bits = std::bit_cast<U>(v);
       const auto subnormal = ((bits & U(0x7f800000u)) == U(0)) && ((bits & U(0x007fffffu)) != U(0));
       util::stdx::where(subnormal, bits) = bits & U(0x80000000u);
-      util::stdx::where((bits & U(0x7fffffffu)) == U(0), bits) = U(0);
+      const U originally_zero = std::bit_cast<U>(unscaled);
+      util::stdx::where(preserve_f32_underflow_sign ? (originally_zero & U(0x7fffffffu)) == U(0)
+                                                    : (bits & U(0x7fffffffu)) == U(0),
+                        bits) = U(0);
       v = std::bit_cast<util::native<float>>(bits);
     } else {
       using U = util::native<uint64_t>;
@@ -642,8 +646,9 @@ inline util::native<double> apply_vop3_dst_mod_f64(util::native<double> v, uint3
 }
 
 inline util::native<float> apply_vop3_dst_mod_f32(util::native<float> v, uint32_t omod,
-                                                  uint32_t clamp, bool clamp_nan_to_zero) {
-  return apply_vop3_dst_mod<float>(v, omod, clamp, clamp_nan_to_zero);
+                                                  uint32_t clamp, bool clamp_nan_to_zero,
+                                                  bool preserve_underflow_sign = false) {
+  return apply_vop3_dst_mod<float>(v, omod, clamp, clamp_nan_to_zero, preserve_underflow_sign);
 }
 
 inline uint32_t effective_vop3_omod_f32(const Wavefront &wf, uint32_t omod) {
@@ -3269,7 +3274,8 @@ template <typename Inst, typename Op>
 /// and Tout are both float32_t (the plain int/cvt unary VOP3 forms apply no
 /// modifiers and reuse the VOP1 unary path directly). The modifier helpers are
 /// bit-exact, so the fast path stays correct with modifiers set; no bail.
-template <typename Tin, typename Tout, typename Inst, typename UnOp>
+template <typename Tin, typename Tout, bool PreserveUnderflowSign = false, typename Inst,
+          typename UnOp>
   requires(util::has_stdx_simd)
 [[nodiscard]] inline bool try_execute_unary_vop3_fp_simd(Inst &inst, Wavefront &wf, UnOp un_op) {
   if (simd_force_scalar() || !sdwa::supports_direct_simd_store(inst) || !inst.src0.simd_capable() ||
@@ -3290,14 +3296,16 @@ template <typename Tin, typename Tout, typename Inst, typename UnOp>
     if (chunk == 0)
       continue;
     const auto a = apply_vop3_src_mod_f32<0>(src0.template load_native<Tin>(base), abs, neg);
-    const auto r = apply_vop3_dst_mod_f32(un_op(a), omod, clamp, floating_clamp_nan_to_zero(wf));
+    const auto r = apply_vop3_dst_mod_f32(un_op(a), omod, clamp, floating_clamp_nan_to_zero(wf),
+                                          PreserveUnderflowSign);
     dst.template store_native<Tout>(base, r, chunk);
   }
   return true;
 }
 
 /// Unconstrained fallback for the VOP3 f32 unary path.
-template <typename Tin, typename Tout, typename Inst, typename UnOp>
+template <typename Tin, typename Tout, bool PreserveUnderflowSign = false, typename Inst,
+          typename UnOp>
 [[nodiscard]] bool try_execute_unary_vop3_fp_simd(Inst &, Wavefront &, UnOp) {
   return false;
 }
@@ -4932,6 +4940,12 @@ template <bool Vop3, typename Inst>
 /// and `Tout` are both float32_t; variadic in the functor.
 #define ROCJITSU_TRY_SIMD_VOP3_UNARY_FP(Tin, Tout, ...)                                            \
   if (::rocjitsu::amdgpu::try_execute_unary_vop3_fp_simd<Tin, Tout>(inst, wf, __VA_ARGS__))        \
+  return
+
+/// Reciprocal keeps the sign when a finite result underflows during OMOD.
+#define ROCJITSU_TRY_SIMD_VOP3_RCP_F32(...)                                                        \
+  if (::rocjitsu::amdgpu::try_execute_unary_vop3_fp_simd<float32_t, float32_t, true>(inst, wf,     \
+                                                                                     __VA_ARGS__)) \
   return
 
 /// VOP3 integer/bitwise VOPC compare counterpart (32-bit lane, no modifiers,

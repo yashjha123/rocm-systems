@@ -693,6 +693,21 @@ inline float finalize_omod_f32(float value, uint32_t omod) {
   return std::bit_cast<float>(bits);
 }
 
+/// RCP distinguishes a zero already produced by the reciprocal from a finite
+/// result that becomes subnormal when OMOD scales it. The former becomes +0;
+/// the latter flushes to zero while retaining its sign.
+inline float finalize_rcp_omod_f32(float unscaled, float scaled, uint32_t omod) {
+  if (omod == 0)
+    return scaled;
+  const uint32_t unscaled_bits = std::bit_cast<uint32_t>(unscaled);
+  if ((unscaled_bits & 0x7fffffffu) == 0)
+    return 0.0f;
+  uint32_t bits = std::bit_cast<uint32_t>(scaled);
+  if ((bits & 0x7f800000u) == 0 && (bits & 0x007fffffu) != 0)
+    bits &= 0x80000000u;
+  return std::bit_cast<float>(bits);
+}
+
 inline double finalize_omod_f64(double value, uint32_t omod) {
   if (omod == 0)
     return value;
