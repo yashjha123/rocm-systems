@@ -363,4 +363,24 @@ TEST(TranscendentalTest, HalfRcpCompleteHardwareDigests) {
     }
 }
 
+TEST(TranscendentalTest, HalfSinCosCompleteHardwareDigests) {
+  // FNV hashes of raw gfx1201 V_SIN_F16/V_COS_F16 captures over all 65536
+  // input encodings, identical in every FP_ROUND and FP16_OVFL setting.
+  const uint64_t sine[4] = {0xbda621182e966565ull, 0xb708bf576f3d8aadull, 0xbda621182e966565ull,
+                            0xb6245e65a23f99f9ull};
+  const uint64_t cosine = 0xc6c3112c531e4391ull;
+  for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode)
+    for (bool cos : {false, true}) {
+      uint64_t digest = 14695981039346656037ull;
+      for (uint32_t input = 0; input < 65536; ++input) {
+        const float value = util::f16_to_f32(static_cast<uint16_t>(input));
+        const float result =
+            cos ? cos_f16(value, denorm_mode, true) : sin_f16(value, denorm_mode, true);
+        digest = (digest ^ util::f32_to_f16(result)) * 1099511628211ull;
+      }
+      EXPECT_EQ(digest, cos ? cosine : sine[denorm_mode])
+          << "cos=" << cos << " denorm=" << denorm_mode;
+    }
+}
+
 } // namespace

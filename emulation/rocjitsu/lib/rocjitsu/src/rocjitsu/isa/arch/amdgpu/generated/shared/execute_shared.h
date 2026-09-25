@@ -8279,10 +8279,13 @@ inline void execute_v_cos_f16_vop1([[maybe_unused]] Inst &inst, [[maybe_unused]]
       continue;
     sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         inst, wf, inst.vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             inst, wf,
-            amdgpu::transcendental::cos_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)))),
+            amdgpu::transcendental::cos_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
 }
@@ -8295,39 +8298,30 @@ inline void execute_v_cos_f16_vop3([[maybe_unused]] Inst &inst, [[maybe_unused]]
       continue;
     sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         inst, wf, inst.vdst, lane,
-        amdgpu::fp_mode::finalize_omod_f16(
-            amdgpu::sdwa::round_f16_result(
-                inst, wf,
-                [&]() {
-                  float v = [&]() {
-                    float v = amdgpu::transcendental::cos_f32([&]() {
-                      float sv = util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)));
-                      if (inst.inst_.abs & (1u << 0))
-                        sv = std::fabs(sv);
-                      if (inst.inst_.neg & (1u << 0))
-                        sv = -sv;
-                      return sv;
-                    }());
-                    const uint32_t effective_omod = amdgpu::fp_mode::effective_f16_omod(
-                        wf.cu().arch(), wf.fp_denorm_mode_f16_f64(), wf.ieee_mode(), false,
-                        inst.inst_.omod);
-                    if (effective_omod == 1)
-                      v *= 2.0f;
-                    else if (effective_omod == 2)
-                      v *= 4.0f;
-                    else if (effective_omod == 3)
-                      v *= 0.5f;
-                    v = amdgpu::fp_mode::finalize_omod_f32(v, effective_omod);
-                    return v;
-                  }();
-                  if (inst.inst_.clamp)
-                    v = amdgpu::clamp_floating_result(v, wf);
-                  return v;
-                }(),
-                wf.fp16_ovfl()),
-            amdgpu::fp_mode::effective_f16_omod(wf.cu().arch(), wf.fp_denorm_mode_f16_f64(),
-                                                wf.ieee_mode(), false, inst.inst_.omod)));
+        amdgpu::sdwa::finish_rounded_f16(
+            inst, wf,
+            [&]() {
+              float v = amdgpu::fp_mode::apply_omod_f16(
+                  amdgpu::transcendental::cos_f16(
+                      [&]() {
+                        float sv = util::f16_to_f32(static_cast<uint16_t>(
+                            amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)));
+                        if (inst.inst_.abs & (1u << 0))
+                          sv = std::fabs(sv);
+                        if (inst.inst_.neg & (1u << 0))
+                          sv = -sv;
+                        return sv;
+                      }(),
+                      wf.fp_denorm_mode_f16_f64(),
+                      amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
+                  amdgpu::fp_mode::effective_f16_omod(wf.cu().arch(), wf.fp_denorm_mode_f16_f64(),
+                                                      wf.ieee_mode(), false, inst.inst_.omod),
+                  wf.fp16_ovfl());
+              if (inst.inst_.clamp)
+                v = amdgpu::clamp_floating_result(v, wf);
+              return v;
+            }(),
+            wf.fp16_ovfl()));
   }
 }
 
@@ -18893,10 +18887,13 @@ inline void execute_v_sin_f16_vop1([[maybe_unused]] Inst &inst, [[maybe_unused]]
       continue;
     sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         inst, wf, inst.vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             inst, wf,
-            amdgpu::transcendental::sin_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)))),
+            amdgpu::transcendental::sin_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
 }
@@ -18909,39 +18906,30 @@ inline void execute_v_sin_f16_vop3([[maybe_unused]] Inst &inst, [[maybe_unused]]
       continue;
     sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         inst, wf, inst.vdst, lane,
-        amdgpu::fp_mode::finalize_omod_f16(
-            amdgpu::sdwa::round_f16_result(
-                inst, wf,
-                [&]() {
-                  float v = [&]() {
-                    float v = amdgpu::transcendental::sin_f32([&]() {
-                      float sv = util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)));
-                      if (inst.inst_.abs & (1u << 0))
-                        sv = std::fabs(sv);
-                      if (inst.inst_.neg & (1u << 0))
-                        sv = -sv;
-                      return sv;
-                    }());
-                    const uint32_t effective_omod = amdgpu::fp_mode::effective_f16_omod(
-                        wf.cu().arch(), wf.fp_denorm_mode_f16_f64(), wf.ieee_mode(), false,
-                        inst.inst_.omod);
-                    if (effective_omod == 1)
-                      v *= 2.0f;
-                    else if (effective_omod == 2)
-                      v *= 4.0f;
-                    else if (effective_omod == 3)
-                      v *= 0.5f;
-                    v = amdgpu::fp_mode::finalize_omod_f32(v, effective_omod);
-                    return v;
-                  }();
-                  if (inst.inst_.clamp)
-                    v = amdgpu::clamp_floating_result(v, wf);
-                  return v;
-                }(),
-                wf.fp16_ovfl()),
-            amdgpu::fp_mode::effective_f16_omod(wf.cu().arch(), wf.fp_denorm_mode_f16_f64(),
-                                                wf.ieee_mode(), false, inst.inst_.omod)));
+        amdgpu::sdwa::finish_rounded_f16(
+            inst, wf,
+            [&]() {
+              float v = amdgpu::fp_mode::apply_omod_f16(
+                  amdgpu::transcendental::sin_f16(
+                      [&]() {
+                        float sv = util::f16_to_f32(static_cast<uint16_t>(
+                            amdgpu::RegisterAccess(wf).read_lane(inst.src0, lane)));
+                        if (inst.inst_.abs & (1u << 0))
+                          sv = std::fabs(sv);
+                        if (inst.inst_.neg & (1u << 0))
+                          sv = -sv;
+                        return sv;
+                      }(),
+                      wf.fp_denorm_mode_f16_f64(),
+                      amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
+                  amdgpu::fp_mode::effective_f16_omod(wf.cu().arch(), wf.fp_denorm_mode_f16_f64(),
+                                                      wf.ieee_mode(), false, inst.inst_.omod),
+                  wf.fp16_ovfl());
+              if (inst.inst_.clamp)
+                v = amdgpu::clamp_floating_result(v, wf);
+              return v;
+            }(),
+            wf.fp16_ovfl()));
   }
 }
 

@@ -1847,6 +1847,66 @@ std::vector<ArithmeticCase> rcp_cases() {
   return cases;
 }
 
+std::vector<ArithmeticCase> half_sin_cos_cases() {
+  struct Captured {
+    const char *name;
+    bool cosine;
+    uint32_t source;
+    uint32_t mode;
+    uint32_t modifier;
+    uint32_t result;
+  };
+  // Raw gfx1201 captures, identical in every FP_ROUND setting and in the VOP1
+  // and VOP3 forms. Modifier 4 is CLAMP; 1..3 are OMOD.
+  const Captured captured[] = {
+      {"SinFlushInput", false, 0x0001u, 48u, 0u, 0x0000u},
+      {"SinFlushInputNegative", false, 0x8001u, 48u, 0u, 0x8000u},
+      {"SinFlushOutput", false, 0x00a2u, 112u, 0u, 0x0000u},
+      {"SinFlushOutputNormal", false, 0x00a3u, 112u, 0u, 0x0400u},
+      {"SinFlushInputPreserveOutput", false, 0x0001u, 176u, 0u, 0x0000u},
+      {"SinPreserve", false, 0x0001u, 240u, 0u, 0x0006u},
+      {"SinQuarterTurn", false, 0x3400u, 48u, 0u, 0x3c00u},
+      {"CosQuarterTurn", true, 0x3400u, 48u, 0u, 0x0000u},
+      {"SinEighthTurn", false, 0x3000u, 48u, 0u, 0x39a8u},
+      {"CosEighthTurn", true, 0x3000u, 48u, 0u, 0x39a8u},
+      {"CosSubnormal", true, 0x0001u, 48u, 0u, 0x3c00u},
+      {"SinInfinity", false, 0x7c00u, 48u, 0u, 0xfe00u},
+      {"SinSignalingNan", false, 0x7d00u, 48u, 0u, 0x7f00u},
+      {"SinScaleRoundedSubnormal", false, 0x0001u, 240u, 1u, 0x0000u},
+      {"SinScaleNegativeSubnormal", false, 0x8001u, 240u, 3u, 0x0000u},
+      {"SinHalve", false, 0x2e66u, 48u, 3u, 0x34b4u},
+      {"CosDouble", true, 0x2e66u, 48u, 1u, 0x3e79u},
+      {"SinClampNegative", false, 0xb400u, 48u, 4u, 0x0000u},
+      {"SinClampNan", false, 0x7d00u, 48u, 4u, 0x0000u},
+  };
+  std::vector<ArithmeticCase> cases;
+  for (const auto &sample : captured)
+    for (bool e64 : {false, true}) {
+      if (!e64 && sample.modifier != 0)
+        continue;
+      // Assembled with llvm-mc for gfx1201.
+      std::array<uint32_t, 3> words{e64 ? (sample.cosine ? 0xd5e10006u : 0xd5e00006u)
+                                        : (sample.cosine ? 0x7e0cc300u : 0x7e0cc100u),
+                                    e64 ? 0x00000100u : 0u, 0u};
+      if (sample.modifier == 4)
+        words[0] |= 0x8000u;
+      else
+        words[1] |= sample.modifier << 27;
+      for (uint32_t rounding = 0; rounding < 4; ++rounding)
+        cases.push_back(
+            {std::string(sample.name) + (e64 ? "E64" : "E32") + "Round" + std::to_string(rounding),
+             ROCJITSU_CODE_ARCH_RDNA4,
+             words,
+             {{0, sample.source}},
+             {{6, 0xdead0000u | sample.result}},
+             sample.mode | (rounding << 2),
+             FE_UPWARD,
+             0x9fc0u,
+             0x9f60u});
+    }
+  return cases;
+}
+
 class ValuFpModeTest : public testing::TestWithParam<ArithmeticCase> {};
 
 TEST_P(ValuFpModeTest, HonorsModeAndPreservesInactiveLanes) {
@@ -1950,6 +2010,11 @@ INSTANTIATE_TEST_SUITE_P(HalfLogExp, ValuFpModeTest,
                          });
 
 INSTANTIATE_TEST_SUITE_P(Rcp, ValuFpModeTest, testing::ValuesIn(rcp_cases()),
+                         [](const testing::TestParamInfo<ArithmeticCase> &info) {
+                           return info.param.name;
+                         });
+
+INSTANTIATE_TEST_SUITE_P(HalfSinCos, ValuFpModeTest, testing::ValuesIn(half_sin_cos_cases()),
                          [](const testing::TestParamInfo<ArithmeticCase> &info) {
                            return info.param.name;
                          });
