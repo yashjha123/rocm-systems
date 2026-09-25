@@ -1570,8 +1570,13 @@ class TestDerivePseudoScalarUnary:
         assert 'if (exec != 0)' not in cpp
         assert 'for (uint32_t lane = 0' not in cpp
         assert 'write_scalar' in cpp
-        assert 'amdgpu::pseudo_scalar::execute_' in cpp
-        assert 'wf.fp_round_mode_' in cpp
+        if name in ('V_S_EXP_F16', 'V_S_LOG_F16'):
+            # Half LOG/EXP share the vector rounded-half policy, ignoring FP_ROUND.
+            assert 'amdgpu::transcendental::log_exp_f16_pseudo_scalar<' in cpp
+            assert 'wf.fp_round_mode_' not in cpp
+        else:
+            assert 'amdgpu::pseudo_scalar::execute_' in cpp
+            assert 'wf.fp_round_mode_' in cpp
         assert 'wf.fp_denorm_mode_' in cpp
 
 

@@ -1895,11 +1895,13 @@ void VRcpF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
           if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
+            return ([&wf](auto a) {
+              return util::f32_to_f16_ovfl_simd(util::rcp_f16_simd(
+                  util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()));
             })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
+          return ([&wf](auto a) {
+            return util::f32_to_f16_simd(util::rcp_f16_simd(
+                util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()));
           })(a);
         })(std::bit_cast<util::native<uint32_t>>(a)));
       }))
@@ -1910,10 +1912,11 @@ void VRcpF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::rcp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::rcp_f16(util::f16_to_f32(static_cast<uint16_t>(
+                                                amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                            wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()),
             wf.fp16_ovfl()));
   }
 }
@@ -1941,11 +1944,13 @@ RJ_NOINLINE void VRcpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<1, true, true, 1>(inst, wf, [&](auto a) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a) {
           if (wf.fp16_ovfl())
-            return ([](auto a) {
-              return util::f32_to_f16_ovfl_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
+            return ([&wf](auto a) {
+              return util::f32_to_f16_ovfl_simd(util::rcp_f16_simd(
+                  util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()));
             })(a);
-          return ([](auto a) {
-            return util::f32_to_f16_simd(util::rcp_f32_simd(util::f16_to_f32_simd(a)));
+          return ([&wf](auto a) {
+            return util::f32_to_f16_simd(util::rcp_f16_simd(
+                util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()));
           })(a);
         })(std::bit_cast<util::native<uint32_t>>(a)));
       }))
@@ -1956,10 +1961,11 @@ RJ_NOINLINE void VRcpF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::rcp_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::rcp_f16(util::f16_to_f32(static_cast<uint16_t>(
+                                                amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                            wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()),
             wf.fp16_ovfl()));
   }
   dpp_write_mask_scope_.restore();
@@ -2909,10 +2915,13 @@ void VSinF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::sin_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::sin_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
 }
@@ -2942,10 +2951,13 @@ RJ_NOINLINE void VSinF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::sin_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::sin_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
   dpp_write_mask_scope_.restore();
@@ -2962,10 +2974,13 @@ void VCosF16Vop1::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::cos_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::cos_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
 }
@@ -2995,10 +3010,13 @@ RJ_NOINLINE void VCosF16Vop1::execute_modifier_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
+        amdgpu::sdwa::finish_rounded_f16(
             *this, wf,
-            amdgpu::transcendental::cos_f32(util::f16_to_f32(
-                static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane)))),
+            amdgpu::transcendental::cos_f16(
+                util::f16_to_f32(
+                    static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                wf.fp_denorm_mode_f16_f64(),
+                amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())),
             wf.fp16_ovfl()));
   }
   dpp_write_mask_scope_.restore();

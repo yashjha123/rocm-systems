@@ -12,7 +12,8 @@
 /// V_RSQ_F32, V_RSQ_F16, V_SQRT_F32, V_LOG_F32, V_EXP_F32, V_SIN_F32, V_COS_F32,
 /// V_RCP_F64, V_RSQ_F64, V_SQRT_F64.
 /// F32 reciprocal and F32/F16 reciprocal square root match the captured RDNA3/4 mappings.
-/// F16 RSQ applies the half input-denormal policy after promotion to F32.
+/// F16 RSQ applies the half input-denormal policy after promotion to F32. F16 RCP, SIN
+/// and COS also apply the half output policies and round to half before output modifiers.
 /// F32 LOG/EXP and SIN/COS use staged integer arithmetic modeled from RDNA3/4 captures,
 /// including coordinate truncation and intermediate product rounding.
 ///
@@ -51,6 +52,11 @@ inline float flush_denorm_f32(float x) {
 
 /// @brief AMD single-precision reciprocal matching physical RDNA3/4 (within 1 ULP).
 inline float rcp_f32(float x) { return util::amdgpu_rcp_f32(x); }
+
+/// @brief F16 reciprocal with half denormal and FP16_OVFL policies, rounded before OMOD.
+inline float rcp_f16(float x, uint32_t denorm_mode, bool fp16_ovfl) {
+  return util::amdgpu_rcp_f16(x, denorm_mode, fp16_ovfl);
+}
 
 /// @brief AMD single-precision reciprocal square root matching physical RDNA3/4 (within 1 ULP).
 inline float rsq_f32(float x) { return util::amdgpu_rsq_f32(x); }
@@ -135,6 +141,24 @@ inline util::native<float> log_exp_f16_simd(util::native<float> x, uint32_t deno
   });
 }
 
+/// @brief Execute pseudo-scalar LOG/EXP F16 with the vector instruction's rounding policy.
+/// @details Source modifiers precede evaluation. The result rounds once to F16 independently
+/// of guest rounding; OMOD then scales that half before CLAMP, which maps NaN to +0.
+/// @returns Raw F16 encoding in bits 15:0 with bits 31:16 cleared.
+template <bool Logarithm>
+inline uint32_t log_exp_f16_pseudo_scalar(float x, bool absolute, bool negate, uint32_t denorm_mode,
+                                          uint32_t omod, bool clamp, bool fp16_ovfl,
+                                          bool quiet_snan) {
+  fp_mode::ScopedEnvironment environment(0);
+  x = pseudo_scalar::detail::apply_source_modifiers(x, absolute, negate);
+  float value = detail::log_exp_f16_nearest<Logarithm>(x, denorm_mode, fp16_ovfl, quiet_snan);
+  value = fp_mode::apply_omod_f16(value, omod, fp16_ovfl);
+  const pseudo_scalar::detail::EvaluationResult clamped =
+      pseudo_scalar::detail::apply_output_modifiers(
+          {value, pseudo_scalar::detail::ResultProvenance::VALUE}, 0, clamp);
+  return util::f32_to_f16(static_cast<float>(clamped.value));
+}
+
 /// @brief sin(2*pi*x) using full-range reduction and a captured RDNA3/4 approximation.
 ///
 /// @details The AMD ISA computes sin(2*pi*x), NOT sin(x). Input is in
@@ -149,6 +173,16 @@ inline float sin_f32(float x, uint32_t denorm_mode = 3, bool quiet_snan = true) 
 /// units of 2*pi radians. Output range is [-1.0, 1.0].
 inline float cos_f32(float x, uint32_t denorm_mode = 3, bool quiet_snan = true) {
   return util::amdgpu_trig_f32(x, true, denorm_mode, quiet_snan);
+}
+
+/// @brief F16 sin(2*pi*x) with half denormal policies, rounded before output modifiers.
+inline float sin_f16(float x, uint32_t denorm_mode, bool quiet_snan) {
+  return util::amdgpu_trig_f16(x, false, denorm_mode, quiet_snan);
+}
+
+/// @brief F16 cos(2*pi*x) with half denormal policies, rounded before output modifiers.
+inline float cos_f16(float x, uint32_t denorm_mode, bool quiet_snan) {
+  return util::amdgpu_trig_f16(x, true, denorm_mode, quiet_snan);
 }
 
 /// @brief Hyperbolic tangent (single-precision, correctly-rounded libm reference).

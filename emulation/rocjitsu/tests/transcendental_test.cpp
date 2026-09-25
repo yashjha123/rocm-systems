@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 
 #include <bit>
+#include <cfenv>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -339,6 +340,123 @@ TEST(TranscendentalTest, HalfLogExpCompleteHardwareDigests) {
       }
     }
   }
+}
+
+TEST(TranscendentalTest, HalfRcpCompleteHardwareDigests) {
+  // FNV hashes of raw gfx1201 F16 captures over all 65536 input encodings.
+  // Both VOP3 forms produce these digests in every FP_ROUND setting.
+  const uint64_t captured[4][2] = {
+      {0x36cc4b30e45154f5ull, 0x3f3980121e8cbcf5ull},
+      {0x4e50e3da9892a3adull, 0x8db5cd8283d4aa91ull},
+      {0x2c71ffe256ab1945ull, 0x73ec6be1844d8945ull},
+      {0x0667b75d288e9039ull, 0xd9f89262db736b55ull},
+  };
+  for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode)
+    for (bool overflow : {false, true}) {
+      uint64_t digest = 14695981039346656037ull;
+      for (uint32_t input = 0; input < 65536; ++input) {
+        const float result =
+            rcp_f16(util::f16_to_f32(static_cast<uint16_t>(input)), denorm_mode, overflow);
+        digest = (digest ^ util::f32_to_f16(result)) * 1099511628211ull;
+      }
+      EXPECT_EQ(digest, captured[denorm_mode][overflow])
+          << "denorm=" << denorm_mode << " overflow=" << overflow;
+    }
+}
+
+TEST(TranscendentalTest, HalfSinCosCompleteHardwareDigests) {
+  // FNV hashes of raw gfx1201 V_SIN_F16/V_COS_F16 captures over all 65536
+  // input encodings, identical in every FP_ROUND and FP16_OVFL setting.
+  const uint64_t sine[4] = {0xbda621182e966565ull, 0xb708bf576f3d8aadull, 0xbda621182e966565ull,
+                            0xb6245e65a23f99f9ull};
+  const uint64_t cosine = 0xc6c3112c531e4391ull;
+  for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode)
+    for (bool cos : {false, true}) {
+      uint64_t digest = 14695981039346656037ull;
+      for (uint32_t input = 0; input < 65536; ++input) {
+        const float value = util::f16_to_f32(static_cast<uint16_t>(input));
+        const float result =
+            cos ? cos_f16(value, denorm_mode, true) : sin_f16(value, denorm_mode, true);
+        digest = (digest ^ util::f32_to_f16(result)) * 1099511628211ull;
+      }
+      EXPECT_EQ(digest, cos ? cosine : sine[denorm_mode])
+          << "cos=" << cos << " denorm=" << denorm_mode;
+    }
+}
+
+TEST(TranscendentalTest, HalfLogExpPseudoScalarHardwareDigestsIgnoreHostRounding) {
+  // FNV hashes of raw gfx1201 V_S_EXP_F16/V_S_LOG_F16 captures over all 65536
+  // input encodings, identical in every FP_ROUND setting.
+  // Order: EXP/LOG, FP16_OVFL, denormal mode, OMOD.
+  const uint64_t captured[2][2][4][4] = {
+      {
+          {
+              {0xa9b68cfe7b8372d8ull, 0x0b72f56e5a6d7814ull, 0xe4ea4ced067c3750ull,
+               0xcfcd3f09573176b0ull},
+              {0xa9b68cfe7b8372d8ull, 0x0b72f56e5a6d7814ull, 0xe4ea4ced067c3750ull,
+               0xcfcd3f09573176b0ull},
+              {0x7a49d8175530c589ull, 0x0b72f56e5a6d7814ull, 0xe4ea4ced067c3750ull,
+               0xcfcd3f09573176b0ull},
+              {0x7a49d8175530c589ull, 0x0b72f56e5a6d7814ull, 0xe4ea4ced067c3750ull,
+               0xcfcd3f09573176b0ull},
+          },
+          {
+              {0xbdc5546b38d182d8ull, 0xe3911d2073676194ull, 0xeb9c191e40f92250ull,
+               0xb3152a70f19f46b0ull},
+              {0xbdc5546b38d182d8ull, 0xe3911d2073676194ull, 0xeb9c191e40f92250ull,
+               0xb3152a70f19f46b0ull},
+              {0x36d64dcb7d64d589ull, 0xe3911d2073676194ull, 0xeb9c191e40f92250ull,
+               0xb3152a70f19f46b0ull},
+              {0x36d64dcb7d64d589ull, 0xe3911d2073676194ull, 0xeb9c191e40f92250ull,
+               0xb3152a70f19f46b0ull},
+          },
+      },
+      {
+          {
+              {0x7b139780c1becc29ull, 0x4a1c0bff99c93029ull, 0x92aee0e380774429ull,
+               0xa50f91f3a56dd829ull},
+              {0xab561022e31ba143ull, 0xaaf41f2388071943ull, 0x6eb7cb2eb6676143ull,
+               0x04a7a4407b6b6943ull},
+              {0x7b139780c1becc29ull, 0x4a1c0bff99c93029ull, 0x92aee0e380774429ull,
+               0xa50f91f3a56dd829ull},
+              {0xab561022e31ba143ull, 0xaaf41f2388071943ull, 0x6eb7cb2eb6676143ull,
+               0x04a7a4407b6b6943ull},
+          },
+          {
+              {0x3999dfce791d6c29ull, 0x9b025637254cd829ull, 0xa55c770db2b8c429ull,
+               0x22a34e921f103029ull},
+              {0xab21f15c2191eb2bull, 0x5f44fd3d7afccb2bull, 0xa83561af3a084b2bull,
+               0xf19cf0fb96af3b2bull},
+              {0x3999dfce791d6c29ull, 0x9b025637254cd829ull, 0xa55c770db2b8c429ull,
+               0x22a34e921f103029ull},
+              {0xab21f15c2191eb2bull, 0x5f44fd3d7afccb2bull, 0xa83561af3a084b2bull,
+               0xf19cf0fb96af3b2bull},
+          },
+      },
+  };
+  const int saved = std::fegetround();
+  for (int host_rounding : {FE_TONEAREST, FE_UPWARD, FE_DOWNWARD, FE_TOWARDZERO}) {
+    ASSERT_EQ(std::fesetround(host_rounding), 0);
+    for (bool logarithm : {false, true})
+      for (bool overflow : {false, true})
+        for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode)
+          for (uint32_t omod = 0; omod < 4; ++omod) {
+            uint64_t digest = 14695981039346656037ull;
+            for (uint32_t input = 0; input < 65536; ++input) {
+              const float value = util::f16_to_f32(static_cast<uint16_t>(input));
+              const uint32_t result =
+                  logarithm ? log_exp_f16_pseudo_scalar<true>(value, false, false, denorm_mode,
+                                                              omod, false, overflow, true)
+                            : log_exp_f16_pseudo_scalar<false>(value, false, false, denorm_mode,
+                                                               omod, false, overflow, true);
+              digest = (digest ^ result) * 1099511628211ull;
+            }
+            EXPECT_EQ(digest, captured[logarithm][overflow][denorm_mode][omod])
+                << "log=" << logarithm << " overflow=" << overflow << " denorm=" << denorm_mode
+                << " omod=" << omod << " host_rounding=" << host_rounding;
+          }
+  }
+  ASSERT_EQ(std::fesetround(saved), 0);
 }
 
 } // namespace

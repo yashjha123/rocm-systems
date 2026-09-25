@@ -166,7 +166,7 @@ struct PseudoScalarSpecialCase {
   uint32_t mode = 0;
 };
 
-constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
+constexpr std::array<PseudoScalarSpecialCase, 89> kSpecialCases{{
     {"literal_f32",
      "v_s_sqrt_f32",
      0,
@@ -215,10 +215,11 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      {.source_opsel = true},
      1u << 7},
     {"f32_round_toward_positive", "v_s_exp_f32", f32_bits(0.5f), 0x3FB504F4u, "", {}, 1u},
+    // Physical gfx1201 EXP F16 rounds to nearest-even half regardless of FP_ROUND.
     {"f16_round_toward_positive",
      "v_s_exp_f16",
      0xCAFE3800u,
-     0x00003DA9u,
+     0x00003DA8u,
      "",
      {.source_opsel = true},
      1u << 2},
@@ -240,10 +241,11 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      3u << 2},
     {"f32_negative_round_toward_negative", "v_s_rcp_f32", f32_bits(-3.0f), 0xBEAAAAAAu, "", {}, 2u},
     {"f32_negative_round_toward_zero", "v_s_rcp_f32", f32_bits(-3.0f), 0xBEAAAAAAu, "", {}, 3u},
+    // Physical gfx1201 RCP F16 ignores directed guest rounding.
     {"f16_negative_round_toward_negative",
      "v_s_rcp_f16",
      0xCAFEC200u,
-     0x0000B556u,
+     0x0000B555u,
      "",
      {.source_opsel = true},
      2u << 2},
@@ -375,14 +377,14 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_destination_overflow_round_toward_negative",
      "v_s_exp_f16",
      0xCAFE4C00u,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true},
      2u << 2},
     {"f16_destination_overflow_round_toward_zero",
      "v_s_exp_f16",
      0xCAFE4C00u,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true},
      3u << 2},
@@ -396,7 +398,7 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_destination_underflow_round_toward_positive",
      "v_s_exp_f16",
      0xCAFECE40u,
-     0x00000001u,
+     0x00000000u,
      "",
      {.source_opsel = true},
      (1u << 2) | (1u << 7)},
@@ -457,17 +459,45 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_rcp_omod_destination_overflow_round_toward_negative",
      "v_s_rcp_f16",
      0xCAFE0400u,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true, .omod = 2},
      2u << 2},
     {"f16_rcp_omod_destination_overflow_round_toward_zero",
      "v_s_rcp_f16",
      0xCAFE0400u,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true, .omod = 2},
      3u << 2},
+    // Halving a finite negative reciprocal into the subnormal range keeps its sign.
+    {"f32_rcp_omod_underflow_retains_sign",
+     "v_s_rcp_f32",
+     0x7E000001u,
+     0x80000000u,
+     "",
+     {.neg_src0 = true, .omod = 3}},
+    {"f32_rcp_omod_zero_result_is_positive",
+     "v_s_rcp_f32",
+     0x7F800000u,
+     0x00000000u,
+     "",
+     {.neg_src0 = true, .omod = 3}},
+    // OMOD scales the rounded half: it flushes a rounded subnormal even when MODE
+    // preserves output denormals, while an underflow produced by scaling keeps its sign.
+    {"f16_rcp_omod_flushes_rounded_subnormal",
+     "v_s_rcp_f16",
+     0xCAFE7401u,
+     0x00000000u,
+     "",
+     {.source_opsel = true, .omod = 1},
+     3u << 6},
+    {"f16_rcp_omod_underflow_retains_sign",
+     "v_s_rcp_f16",
+     0xCAFEF001u,
+     0x00008000u,
+     "",
+     {.source_opsel = true, .omod = 3}},
     {"f32_true_positive_infinity", "v_s_exp_f32", 0x7F800000u, 0x7F800000u, "", {}, 3u},
     {"f32_true_negative_infinity", "v_s_exp_f32", 0xFF800000u, 0x00000000u, "", {}, 1u | (1u << 5)},
     {"f32_divide_by_zero", "v_s_rcp_f32", 0x00000000u, 0x7F800000u, "", {}},
@@ -496,7 +526,7 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_finite_overflow_round_toward_zero",
      "v_s_exp_f16",
      0xCAFE7BFFu,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true},
      3u << 2},
@@ -516,7 +546,7 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_finite_overflow_round_toward_negative",
      "v_s_exp_f16",
      0xCAFE7BFFu,
-     0x00007BFFu,
+     0x00007C00u,
      "",
      {.source_opsel = true},
      2u << 2},
@@ -530,7 +560,7 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
     {"f16_finite_underflow_round_toward_positive",
      "v_s_exp_f16",
      0xCAFEFBFFu,
-     0x00000001u,
+     0x00000000u,
      "",
      {.source_opsel = true},
      (1u << 2) | (1u << 7)},
@@ -562,10 +592,11 @@ constexpr std::array<PseudoScalarSpecialCase, 85> kSpecialCases{{
      "",
      {.source_opsel = true},
      amdgpu::Wavefront::FP16_OVFL_BIT | (3u << 2)},
+    // Unlike a true infinity, the RCP F16 divide-by-zero result saturates on gfx1201.
     {"f16_divide_by_zero_with_fp16_ovfl",
      "v_s_rcp_f16",
      0xCAFE0000u,
-     0x00007C00u,
+     0x00007BFFu,
      "",
      {.source_opsel = true},
      amdgpu::Wavefront::FP16_OVFL_BIT},
@@ -831,7 +862,8 @@ TEST(PseudoScalarHelperTest, HandlesExplicitSpecialCasesWithoutHostInvalidOrDivi
   EXPECT_EQ(f32_exp_negative_infinity, 0x00000000u);
   EXPECT_TRUE(std::isnan(std::bit_cast<float>(f32_signaling_nan)));
   EXPECT_NE(f32_signaling_nan & 0x00400000u, 0u);
-  EXPECT_EQ(f16_rcp_zero, 0x00007C00u);
+  // FP16_OVFL saturates the RCP F16 divide-by-zero result on gfx1201.
+  EXPECT_EQ(f16_rcp_zero, 0x00007BFFu);
   EXPECT_EQ(f16_sqrt_negative, 0x0000FE00u);
   EXPECT_EQ(f16_rsq_negative, 0x0000FE00u);
   EXPECT_EQ(f16_log_negative, 0x0000FE00u);
