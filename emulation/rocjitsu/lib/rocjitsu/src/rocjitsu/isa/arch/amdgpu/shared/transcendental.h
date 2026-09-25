@@ -12,8 +12,8 @@
 /// V_RSQ_F32, V_RSQ_F16, V_SQRT_F32, V_LOG_F32, V_EXP_F32, V_SIN_F32, V_COS_F32,
 /// V_RCP_F64, V_RSQ_F64, V_SQRT_F64.
 /// F32 reciprocal and F32/F16 reciprocal square root match the captured RDNA3/4 mappings.
-/// F16 RSQ applies the half input-denormal policy after promotion to F32. F16 RCP also
-/// applies the half output policies and rounds to half before output modifiers.
+/// F16 RSQ applies the half input-denormal policy after promotion to F32. F16 RCP, SIN
+/// and COS also apply the half output policies and round to half before output modifiers.
 /// F32 LOG/EXP and SIN/COS use staged integer arithmetic modeled from RDNA3/4 captures,
 /// including coordinate truncation and intermediate product rounding.
 ///
@@ -155,6 +155,16 @@ inline float sin_f32(float x, uint32_t denorm_mode = 3, bool quiet_snan = true) 
 /// units of 2*pi radians. Output range is [-1.0, 1.0].
 inline float cos_f32(float x, uint32_t denorm_mode = 3, bool quiet_snan = true) {
   return util::amdgpu_trig_f32(x, true, denorm_mode, quiet_snan);
+}
+
+/// @brief F16 sin(2*pi*x) with half denormal policies, rounded before output modifiers.
+inline float sin_f16(float x, uint32_t denorm_mode, bool quiet_snan) {
+  return util::amdgpu_trig_f16(x, false, denorm_mode, quiet_snan);
+}
+
+/// @brief F16 cos(2*pi*x) with half denormal policies, rounded before output modifiers.
+inline float cos_f16(float x, uint32_t denorm_mode, bool quiet_snan) {
+  return util::amdgpu_trig_f16(x, true, denorm_mode, quiet_snan);
 }
 
 /// @brief Hyperbolic tangent (single-precision, correctly-rounded libm reference).
