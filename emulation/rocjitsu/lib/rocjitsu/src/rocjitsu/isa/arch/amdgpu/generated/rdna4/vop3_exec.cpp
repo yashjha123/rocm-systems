@@ -10346,11 +10346,11 @@ void VSExpF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
 void VSExpF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
   amdgpu::RegisterAccess(wf).write_scalar(
       vdst,
-      amdgpu::pseudo_scalar::execute_f16(
-          amdgpu::pseudo_scalar::Operation::EXP2,
+      amdgpu::transcendental::log_exp_f16_pseudo_scalar<false>(
           util::f16_to_f32(static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_scalar(src0))),
-          (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, wf.fp_round_mode_f16_f64(),
-          wf.fp_denorm_mode_f16_f64(), inst_.omod, inst_.clamp, wf.fp16_ovfl()));
+          (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, wf.fp_denorm_mode_f16_f64(), inst_.omod,
+          inst_.clamp, wf.fp16_ovfl(),
+          amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())));
 }
 
 void VSLogF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
@@ -10360,11 +10360,11 @@ void VSLogF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
 void VSLogF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
   amdgpu::RegisterAccess(wf).write_scalar(
       vdst,
-      amdgpu::pseudo_scalar::execute_f16(
-          amdgpu::pseudo_scalar::Operation::LOG2,
+      amdgpu::transcendental::log_exp_f16_pseudo_scalar<true>(
           util::f16_to_f32(static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_scalar(src0))),
-          (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, wf.fp_round_mode_f16_f64(),
-          wf.fp_denorm_mode_f16_f64(), inst_.omod, inst_.clamp, wf.fp16_ovfl()));
+          (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, wf.fp_denorm_mode_f16_f64(), inst_.omod,
+          inst_.clamp, wf.fp16_ovfl(),
+          amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode())));
 }
 
 void VSRcpF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
