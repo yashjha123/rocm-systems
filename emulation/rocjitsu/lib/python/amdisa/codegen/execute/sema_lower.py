@@ -1928,6 +1928,15 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
         operation = callee.removeprefix('pseudo_scalar_').removesuffix(f'_{precision}')
         operation_name = pseudo_scalar_operations[operation]
         mode_suffix = 'f32' if precision == 'f32' else 'f16_f64'
+        if precision == 'f16' and operation_name in ('EXP2', 'LOG2'):
+            # Share the vector instruction's rounded-half LOG/EXP policy.
+            logarithm = str(operation_name == 'LOG2').lower()
+            return (
+                f'amdgpu::transcendental::log_exp_f16_pseudo_scalar<{logarithm}>('
+                f'{args[0]}, (inst_.abs & 1u) != 0, (inst_.neg & 1u) != 0, '
+                'wf.fp_denorm_mode_f16_f64(), inst_.omod, inst_.clamp, wf.fp16_ovfl(), '
+                'amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode()))'
+            )
         fp16_ovfl = ', wf.fp16_ovfl()' if precision == 'f16' else ''
         return (
             f'amdgpu::pseudo_scalar::execute_{precision}('
