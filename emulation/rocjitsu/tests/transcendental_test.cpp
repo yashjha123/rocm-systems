@@ -421,6 +421,26 @@ TEST(TranscendentalTest, HalfRsqCompleteHardwareDigests) {
     }
 }
 
+TEST(TranscendentalTest, HalfSqrtCompleteHardwareDigests) {
+  // FNV hashes of raw gfx1201 V_SQRT_F16 captures over all 65536 input encodings, identical in
+  // every FP_ROUND and FP16_OVFL setting. Only the input-denormal bit changes the result:
+  // SQRT cannot overflow, and no result is subnormal.
+  const uint64_t captured[4] = {
+      0x03e37f675db7c132ull,
+      0x551301580720ed36ull,
+      0x03e37f675db7c132ull,
+      0x551301580720ed36ull,
+  };
+  for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode) {
+    uint64_t digest = 14695981039346656037ull;
+    for (uint32_t input = 0; input < 65536; ++input) {
+      const float result = sqrt_f16(util::f16_to_f32(static_cast<uint16_t>(input)), denorm_mode);
+      digest = (digest ^ util::f32_to_f16(result)) * 1099511628211ull;
+    }
+    EXPECT_EQ(digest, captured[denorm_mode]) << "denorm=" << denorm_mode;
+  }
+}
+
 TEST(TranscendentalTest, HalfSinCosCompleteHardwareDigests) {
   // FNV hashes of raw gfx1201 V_SIN_F16/V_COS_F16 captures over all 65536
   // input encodings, identical in every FP_ROUND and FP16_OVFL setting.
