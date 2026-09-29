@@ -660,6 +660,7 @@ add_executable(
     reciprocal_simd_test.cpp
     transcendental_simd_test.cpp
     valu_fp_mode_test.cpp
+    valu_conversion_test.cpp
     scalar_scc_test.cpp
     cdna3_predicate_mask_test.cpp
     scoped_temp_test.cpp

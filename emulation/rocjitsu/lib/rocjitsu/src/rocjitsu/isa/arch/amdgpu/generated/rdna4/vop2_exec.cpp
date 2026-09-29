@@ -961,7 +961,21 @@ void VCvtPkRtzF16F32Vop2::execute_impl(amdgpu::Wavefront &wf) {
     execute_modifier_impl(wf);
     return;
   }
-  amdgpu::execute_v_cvt_pk_rtz_f16_f32_vop2(*this, wf);
+  [[maybe_unused]] const amdgpu::conversion::Mode mode{
+      wf.fp_round_mode_f32(), wf.fp_round_mode_f16_f64(), wf.fp_denorm_mode_f32(),
+      wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()};
+  [[maybe_unused]] const amdgpu::conversion::Modifiers mods{};
+  [[maybe_unused]] const uint32_t opsel = 0u;
+  uint64_t exec = wf.exec();
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
+    const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane);
+    const uint32_t result =
+        static_cast<uint32_t>(amdgpu::conversion::pack_rtz_f16(s0, s1, mods, mode));
+    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::PK_F16>(*this, wf, vdst, lane, result);
+  }
 }
 
 RJ_NOINLINE void VCvtPkRtzF16F32Vop2::execute_modifier_impl(amdgpu::Wavefront &wf) {
@@ -984,7 +998,21 @@ RJ_NOINLINE void VCvtPkRtzF16F32Vop2::execute_modifier_impl(amdgpu::Wavefront &w
   if (inst_.src0 == amdgpu::SRC_DPP)
     dpp_write_mask_scope_.bind(wf,
                                wf.exec() & dpp_plan_.row_bank_mask & dpp_plan_.source_write_mask);
-  amdgpu::execute_v_cvt_pk_rtz_f16_f32_vop2(*this, wf);
+  [[maybe_unused]] const amdgpu::conversion::Mode mode{
+      wf.fp_round_mode_f32(), wf.fp_round_mode_f16_f64(), wf.fp_denorm_mode_f32(),
+      wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()};
+  [[maybe_unused]] const amdgpu::conversion::Modifiers mods{};
+  [[maybe_unused]] const uint32_t opsel = 0u;
+  uint64_t exec = wf.exec();
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
+    const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane);
+    const uint32_t result =
+        static_cast<uint32_t>(amdgpu::conversion::pack_rtz_f16(s0, s1, mods, mode));
+    amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::PK_F16>(*this, wf, vdst, lane, result);
+  }
   dpp_write_mask_scope_.restore();
 }
 

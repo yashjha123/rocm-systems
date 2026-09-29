@@ -3975,15 +3975,17 @@ def test_generated_rdna4_local_vop3_pack_paths_use_selected_halves(
     def local_body(class_name: str, next_class_name: str) -> str:
         return _generated_method_body(rdna4_vop3, class_name, next_class_name)
 
+    # Both are measured conversions; their bodies call conversion.h helpers.
     pack = local_body('VPackB32F16Vop3', 'VCvtPkNormI16F16Vop3')
-    assert 'read_vop3_true16_src(src0, wf, lane, inst_.opsel, 0)' in pack
-    assert 'read_vop3_true16_src(src1, wf, lane, inst_.opsel, 1)' in pack
+    assert 'read_vop3_true16_src(src0, wf, lane, opsel, 0)' in pack
+    assert 'read_vop3_true16_src(src1, wf, lane, opsel, 1)' in pack
+    assert 'amdgpu::conversion::pack_f16(' in pack
 
     pknorm = local_body('VCvtPkNormI16F16Vop3', 'VCvtPkNormU16F16Vop3')
-    assert 'read_vop3_true16_src(src0, wf, lane, inst_.opsel, 0)' in pknorm
-    assert 'read_vop3_true16_src(src1, wf, lane, inst_.opsel, 1)' in pknorm
+    assert 'read_vop3_true16_src(src0, wf, lane, opsel, 0)' in pknorm
+    assert 'read_vop3_true16_src(src1, wf, lane, opsel, 1)' in pknorm
     assert 'float s0 = std::bit_cast<float>' not in pknorm
-    assert 'auto cvt_i16 = [](float f) -> int16_t {' in pknorm
+    assert 'amdgpu::conversion::normalize_f16(' in pknorm
 
 
 def test_gfx1250_generated_vop3_lshrrev_b16_uses_true16_helpers(

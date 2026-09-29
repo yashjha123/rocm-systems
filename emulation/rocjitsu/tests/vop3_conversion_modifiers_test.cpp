@@ -263,7 +263,11 @@ TEST_P(Vop3ConversionModifierTest, NearestRoundsTiesUpWithoutRoundingAdjacentInp
         ASSERT_TRUE(cu->execute_instruction(inst.get(), *wf).succeeded());
         for (uint32_t lane = 0; lane < wf->wf_size(); ++lane) {
           const auto &c = cases[(first + lane) % std::size(cases)];
-          EXPECT_EQ(cu->read_vgpr(vb + 2, lane), static_cast<uint32_t>(c.expected))
+          // Physical gfx1201 saturates a NaN by its sign instead of returning zero.
+          int32_t expected = c.expected;
+          if (GetParam() == ROCJITSU_CODE_ARCH_RDNA4 && (c.bits & 0x7fffffffu) > 0x7f800000u)
+            expected = (c.bits >> 31) ? INT32_MIN : INT32_MAX;
+          EXPECT_EQ(cu->read_vgpr(vb + 2, lane), static_cast<uint32_t>(expected))
               << "arch=" << GetParam() << " input=" << c.bits << " vop3=" << vop3
               << " scalar=" << force_scalar;
         }
@@ -327,6 +331,10 @@ TEST_P(Vop3ConversionModifierTest, PackedRtzPreservesIndependentSourceModifiers)
                   half &= 0x7fff;
                 if (neg_mask & (1u << src))
                   half ^= 0x8000;
+                // Physical gfx1201 flushes a subnormal half when MODE disables
+                // F16 output denormals, as both tested modes do.
+                if (GetParam() == ROCJITSU_CODE_ARCH_RDNA4 && (half & 0x7c00u) == 0)
+                  half &= 0x8000;
                 expected |= half << (16 * src);
               }
               EXPECT_EQ(cu->read_vgpr(vb + 2, lane), exec & (1ull << lane) ? expected : 0xdeadbeefu)

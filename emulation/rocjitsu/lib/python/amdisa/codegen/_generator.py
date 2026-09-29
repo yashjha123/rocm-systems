@@ -6306,6 +6306,17 @@ class CodeGenerator:
         has_abs = profile.has_abs_modifier(inst.enc_name)
         self._enc_name = enc_name
 
+        if self._uses_measured_conversion(inst):
+            from amdisa.codegen.execute.measured_conversion import (
+                measured_conversion_body,
+            )
+
+            measured_body = measured_conversion_body(
+                inst.name, is_vop3, src_ops, dst_ops
+            )
+            if measured_body is not None:
+                return measured_body
+
         # Try SemaAST pipeline for validated classes.
         from amdisa.sema_derive import derive_sema_block
         from amdisa.codegen.execute.sema_lower import (
@@ -9805,7 +9816,22 @@ class CodeGenerator:
             return True
         if self._uses_true16_vop3_execute(inst, enc_name):
             return True
+        # Measured conversions replace the portable body on their architectures.
+        if self._uses_measured_conversion(inst):
+            return True
         return False
+
+    def _uses_measured_conversion(self, inst: Instruction | None) -> bool:
+        from amdisa.codegen.execute.measured_conversion import (
+            MEASURED_CONVERSION_ARCHES,
+            MEASURED_CONVERSIONS,
+        )
+
+        return (
+            inst is not None
+            and getattr(self.isa_spec, 'arch_name', None) in MEASURED_CONVERSION_ARCHES
+            and inst.name in MEASURED_CONVERSIONS
+        )
 
     def _uses_true16_vop3_execute(
         self, inst: Instruction | None, enc_name: str | None = None
@@ -12850,6 +12876,11 @@ class CodeGenerator:
                             if self.generated_dir_name in ('cdna5', 'cdna4', 'rdna4')
                             else None
                         )
+                        if self._uses_measured_conversion(inst):
+                            # The measured body carries no SIMD fast path.
+                            _coverage_probe = None
+                            _local_true16_probe = None
+                            _renamed_vop3p_probe = None
                         if _coverage_probe:
                             can_share = False
                             _portable_probe = False

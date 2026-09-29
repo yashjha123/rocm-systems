@@ -1278,6 +1278,56 @@ std::vector<ArithmeticCase> omod_rounded_result_cases() {
   };
 }
 
+std::vector<ArithmeticCase> measured_conversion_cases() {
+  // Physical gfx1201 witnesses through the generated RDNA4 conversion bodies;
+  // valu_conversion_test.cpp covers every conversion at the helper level.
+  // Encodings from llvm-mc -mcpu=gfx1201 -mattr=+real-true16.
+  const auto rdna4 = [](std::string name, std::array<uint32_t, 3> words,
+                        std::vector<std::pair<uint32_t, uint32_t>> sources,
+                        std::vector<std::pair<uint32_t, uint32_t>> expected, uint32_t mode) {
+    return ArithmeticCase{std::move(name),    ROCJITSU_CODE_ARCH_RDNA4, words,
+                          std::move(sources), std::move(expected),      mode,
+                          FE_TONEAREST};
+  };
+  return {
+      // v_cvt_f16_f32_e64 v6, -v0
+      rdna4("CvtF16F32Negate", {0xd58a0006u, 0x20000100u, 0u}, {{0, 0u}, {6, 0u}}, {{6, 0x8000u}},
+            0xf0u),
+      // v_cvt_f32_f64_e32 v6, v[0:1]: tiny before rounding flushes.
+      rdna4("CvtF32F64TininessBeforeRounding", {0x7e0c1f00u, 0u, 0u},
+            {{0, 0xe0000000u}, {1, 0x380fffffu}}, {{6, 0u}}, 0x00u),
+      // v_cvt_f64_f32_e64 v[6:7], v0 mul:2 maps -0 to +0.
+      rdna4("CvtF64F32Mul2NegativeZero", {0xd5900006u, 0x08000100u, 0u}, {{0, 0x80000000u}},
+            {{6, 0u}, {7, 0u}}, 0xf0u),
+      // v_cvt_f32_i32_e32 v6, v0 rounds toward +inf.
+      rdna4("CvtF32I32RoundUp", {0x7e0c0b00u, 0u, 0u}, {{0, 0x80000001u}}, {{6, 0xceffffffu}},
+            0x05u),
+      // v_cvt_pk_rtz_f16_f32_e32 v6, v0, v1 quiets a signaling NaN.
+      rdna4("CvtPkRtzF16F32QuietsNan", {0x5e0c0300u, 0u, 0u}, {{0, 0x7f800001u}, {1, 0u}},
+            {{6, 0x7e00u}}, 0x00u),
+      // v_pack_b32_f16 v6, v0.l, v1.l quiets a signaling NaN.
+      rdna4("PackB32F16QuietsNan", {0xd7110006u, 0x00020300u, 0u}, {{0, 0x7c01u}, {1, 0u}},
+            {{6, 0x7e01u}}, 0xf0u),
+      // v_cvt_floor_i32_f32_e32 v6, v0 saturates a NaN by its sign.
+      rdna4("CvtFloorI32F32NegativeNan", {0x7e0c1b00u, 0u, 0u}, {{0, 0xffc00000u}},
+            {{6, 0x80000000u}}, 0xf0u),
+      // v_cvt_pk_u8_f32 v6, v0, v1, v2 rounds 1.5 to even.
+      rdna4("CvtPkU8F32RoundsToEven", {0xd6260006u, 0x040a0300u, 0u},
+            {{0, 0x3fc00000u}, {1, 0u}, {2, 0u}}, {{6, 2u}}, 0xf0u),
+      // v_cvt_norm_i16_f16_e32 v6.l, v0.l flushes a subnormal input.
+      rdna4("CvtNormI16F16FlushesInput", {0x7e0cc700u, 0u, 0u}, {{0, 0x03ffu}, {6, 0xa5a50000u}},
+            {{6, 0xa5a50000u}}, 0x00u),
+      // v_sat_pk_u8_i16_e64 v6.l, v0 keeps the destination high half.
+      rdna4("SatPkU8I16KeepsHighHalf", {0xd5e20006u, 0x00000100u, 0u}, {{0, 1u}, {6, 0xa5a50000u}},
+            {{6, 0xa5a50001u}}, 0xf0u),
+      // v_cvt_f32_fp8_e32 v6, v0 decodes NaN as the negative quiet NaN.
+      rdna4("CvtF32Fp8Nan", {0x7e0cd900u, 0u, 0u}, {{0, 0x7fu}}, {{6, 0xffc00000u}}, 0xf0u),
+      // v_cvt_sr_fp8_f32 v6, v0, v1 adds the top random bits.
+      rdna4("CvtSrFp8F32RandomBits", {0xd76b0006u, 0x00020300u, 0u},
+            {{0, 0x432b98e3u}, {1, 0x03ba3c70u}, {6, 1u}}, {{6, 0x72u}}, 0x00u),
+  };
+}
+
 std::vector<ArithmeticCase> f16_fma_nan_cases() {
   std::vector<ArithmeticCase> cases;
   for (rj_code_arch_t arch : {ROCJITSU_CODE_ARCH_RDNA3, ROCJITSU_CODE_ARCH_RDNA3_5,
@@ -2270,6 +2320,12 @@ INSTANTIATE_TEST_SUITE_P(MinMaxNum, ValuFpModeTest, testing::ValuesIn(min_max_nu
 
 INSTANTIATE_TEST_SUITE_P(OmodRoundedResult, ValuFpModeTest,
                          testing::ValuesIn(omod_rounded_result_cases()),
+                         [](const testing::TestParamInfo<ArithmeticCase> &info) {
+                           return info.param.name;
+                         });
+
+INSTANTIATE_TEST_SUITE_P(MeasuredConversion, ValuFpModeTest,
+                         testing::ValuesIn(measured_conversion_cases()),
                          [](const testing::TestParamInfo<ArithmeticCase> &info) {
                            return info.param.name;
                          });
