@@ -39,3 +39,14 @@ def test_fp8_selects_follow_opsel():
 def test_every_measured_conversion_has_a_body():
     for name in MEASURED_CONVERSIONS:
         assert measured_conversion_body(name, True, ['src0', 'src1', 'src2'], ['vdst'])
+
+
+def test_float_to_integer_and_f16_widening_use_measured_helpers():
+    widen = measured_conversion_body('V_CVT_F32_F16', True, ['src0'], ['vdst'])
+    assert 'read_vop3_true16_src(src0, wf, lane, opsel, 0)' in widen
+    assert 'amdgpu::conversion::F16, amdgpu::conversion::F32' in widen
+    narrow = measured_conversion_body('V_CVT_I16_F16', True, ['src0'], ['vdst'])
+    assert 'IntegerRounding::TRUNCATE, -32768, 32767, false' in narrow
+    assert 'write_vop3_true16_dst(vdst, wf, lane, opsel, result, true)' in narrow
+    for name in ('V_CVT_I32_F32', 'V_CVT_U32_F32', 'V_CVT_U16_F16'):
+        assert name in MEASURED_CONVERSIONS

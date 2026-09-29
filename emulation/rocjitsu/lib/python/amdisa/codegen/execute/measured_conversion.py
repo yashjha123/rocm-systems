@@ -86,6 +86,7 @@ _SPECS: dict[str, _Spec] = {
     'V_CVT_F16_F32': _Spec(('b32',), _float('F32', 'F16'), 'b16'),
     'V_CVT_F32_F64': _Spec(('b64',), _float('F64', 'F32'), 'b32'),
     'V_CVT_F64_F32': _Spec(('b32',), _float('F32', 'F64'), 'b64'),
+    'V_CVT_F32_F16': _Spec(('b16',), _float('F16', 'F32'), 'b32'),
     'V_CVT_F16_I16': _Spec(('b16',), _integer('int16_t', 'F16'), 'b16'),
     'V_CVT_F16_U16': _Spec(('b16',), _integer('uint16_t', 'F16'), 'b16'),
     'V_CVT_F32_I32': _Spec(('b32',), _integer('int32_t', 'F32'), 'b32'),
@@ -97,6 +98,18 @@ _SPECS: dict[str, _Spec] = {
         ('b16', 'b16'),
         f'{_NS}::pack_f16(static_cast<uint16_t>(s0), static_cast<uint16_t>(s1), mods, mode)',
         'b32',
+    ),
+    'V_CVT_I32_F32': _Spec(
+        ('b32',), _to_integer('F32', 0, 'TRUNCATE', *_INT32, False), 'b32'
+    ),
+    'V_CVT_U32_F32': _Spec(
+        ('b32',), _to_integer('F32', 0, 'TRUNCATE', *_UINT32, False), 'b32'
+    ),
+    'V_CVT_I16_F16': _Spec(
+        ('b16',), _to_integer('F16', 0, 'TRUNCATE', '-32768', '32767', False), 'b16'
+    ),
+    'V_CVT_U16_F16': _Spec(
+        ('b16',), _to_integer('F16', 0, 'TRUNCATE', '0', '65535', False), 'b16'
     ),
     'V_CVT_I32_F64': _Spec(
         ('b64',), _to_integer('F64', 0, 'TRUNCATE', *_INT32, False), 'b32'

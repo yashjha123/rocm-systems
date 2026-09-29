@@ -337,7 +337,8 @@ inline Rounding destination(const Mode &m, Format f) {
 
 } // namespace detail
 
-/// @brief Convert between F16, F32 and F64 (V_CVT_F16_F32, V_CVT_F32_F64, V_CVT_F64_F32).
+/// @brief Convert between F16, F32 and F64 (V_CVT_F16_F32, V_CVT_F32_F16, V_CVT_F32_F64,
+/// V_CVT_F64_F32).
 /// @details Tininess is detected after rounding to the destination precision with an unbounded
 /// exponent: a value that rounds up to the smallest normal is kept even with output denormals
 /// disabled, while a tiny value flushes, and under OMOD becomes +0 even when its subnormal

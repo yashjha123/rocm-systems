@@ -6402,15 +6402,13 @@ def test_generated_rdna4_vop3_cvt_f32_f16_applies_true16_source_modifiers(
 ):
     vop3 = (rdna4_generated_root / 'vop3_exec.cpp').read_text()
     body = _generated_method_body(vop3, 'VCvtF32F16Vop3', 'VCvtU16F16Vop3')
+    # The measured conversion applies ABS/NEG to the selected half itself.
     assert 'read_vop3_true16_src(src0, wf, lane, opsel, 0)' in body
-    assert 'if (inst_.abs & (1u << 0))' in body
-    assert 'if (inst_.neg & (1u << 0))' in body
-    assert 'util::f16_to_f32' in body
-    assert 'std::fabs(sv)' in body
-    assert 'sv = -sv' in body
-    assert 'amdgpu::fp_mode::cvt_f32_f16' in body
+    assert 'static_cast<uint32_t>(inst_.abs)' in body
+    assert 'static_cast<uint32_t>(inst_.neg)' in body
+    assert 'amdgpu::conversion::convert_float(' in body
+    assert 'amdgpu::conversion::F16, amdgpu::conversion::F32' in body
     assert 'wf.fp_denorm_mode_f16_f64()' in body
-    assert 'wf.ieee_mode()' in body
 
 
 def test_generated_rdna3_dot2acc_uses_dot2c_simd_probe(
