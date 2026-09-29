@@ -131,10 +131,23 @@ inline uint64_t shift_round(uint64_t significand, int shift, uint32_t rounding, 
 /// Options for the final rounding to a destination format.
 struct Rounding {
   uint32_t mode = 0;
-  bool flush_output = false;    ///< Tiny results (before rounding) become signed zero.
+  bool flush_output = false;    ///< Tiny results (after rounding) become signed zero.
   bool overflow_to_max = false; ///< Finite overflow saturates regardless of mode.
   int max_exponent = 0;         ///< Largest unbiased exponent; 0 selects the IEEE limit.
 };
+
+/// Whether significand * 2^exponent stays below the smallest normal of `f` after rounding to
+/// the full significand precision of `f` with an unbounded exponent.
+inline bool tiny_after_rounding(uint64_t significand, int exponent, Format f, uint32_t rounding,
+                                bool negative) {
+  const int min_exponent = 1 - f.bias();
+  const int top = top_bit(significand) + exponent;
+  if (top != min_exponent - 1)
+    return top < min_exponent;
+  const uint64_t units =
+      shift_round(significand, top - f.fraction_bits - exponent, rounding, negative);
+  return !(units >> (f.fraction_bits + 1));
+}
 
 /// Round significand * 2^exponent to `f` exactly once.
 inline uint64_t encode(bool negative, uint64_t significand, int exponent, Format f,
@@ -145,7 +158,7 @@ inline uint64_t encode(bool negative, uint64_t significand, int exponent, Format
   const int min_exponent = 1 - f.bias();
   const int max_exponent = r.max_exponent ? r.max_exponent : f.bias();
   const int top = top_bit(significand) + exponent;
-  if (r.flush_output && top < min_exponent)
+  if (r.flush_output && tiny_after_rounding(significand, exponent, f, r.mode, negative))
     return sign;
   const int result_exponent = top > min_exponent ? top : min_exponent;
   uint64_t units =
@@ -232,9 +245,11 @@ inline Rounding destination(const Mode &m, Format f) {
 } // namespace detail
 
 /// @brief Convert between F16, F32 and F64 (V_CVT_F16_F32, V_CVT_F32_F64, V_CVT_F64_F32).
-/// @details Tininess is detected before rounding: with output denormals disabled a result that
-/// would round up to the smallest normal still flushes, and OMOD makes it +0. NaNs are quieted
-/// and keep the leading payload bits.
+/// @details Tininess is detected after rounding to the destination precision with an unbounded
+/// exponent: a value that rounds up to the smallest normal is kept even with output denormals
+/// disabled, while a tiny value flushes, and under OMOD becomes +0 even when its subnormal
+/// encoding would round up to the smallest normal. NaNs are quieted and keep the leading payload
+/// bits.
 inline uint64_t convert_float(uint64_t bits, Format from, Format to, const Modifiers &mods,
                               const Mode &m) {
   bits = detail::modify(bits & (from.sign() | from.magnitude_mask()), from, mods, 0);
@@ -249,9 +264,10 @@ inline uint64_t convert_float(uint64_t bits, Format from, Format to, const Modif
     result = negative ? to.sign() : 0;
   else {
     const detail::Exact e = detail::exact(bits, from);
-    // OMOD treats a result that was tiny before rounding as zero, even when it
-    // rounds up to the smallest normal.
-    if (mods.omod && detail::top_bit(e.significand) + e.exponent < 1 - to.bias())
+    // OMOD treats a result that is tiny after rounding to the destination precision as zero,
+    // even when the subnormal encoding rounds up to the smallest normal.
+    if (mods.omod && detail::tiny_after_rounding(e.significand, e.exponent, to,
+                                                 detail::round_mode(m, to), negative))
       return mods.clamp ? 0 : detail::finish(0, to, mods, m);
     result = detail::encode(negative, e.significand, e.exponent, to, detail::destination(m, to));
   }

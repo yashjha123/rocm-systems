@@ -259,6 +259,32 @@ constexpr Witness kWitnesses[] = {
     {"v_sat_pk_u8_i16", "e64", 0xf0u, {0x1d5aull, 0x0ull, 0x0ull}, 0xa5a500ffull},
 };
 
+// Directed gfx1201 captures at the smallest-normal boundary. Output flushing and the OMOD
+// zeroing of tiny results both judge tininess after rounding to the destination precision
+// with an unbounded exponent: 0x387ff000 (F32) rounds to the smallest F16 normal and is kept,
+// while the exact 11-bit 0x387fe000 is tiny even though its subnormal encoding rounds up.
+constexpr Witness kTininessWitnesses[] = {
+    {"v_cvt_f16_f32", "e64", 0x00u, {0x387ff000ull, 0x0ull, 0x0ull}, 0xa5a50400ull},
+    {"v_cvt_f16_f32", "e64", 0x00u, {0x387fe000ull, 0x0ull, 0x0ull}, 0xa5a50000ull},
+    {"v_cvt_f16_f32", "neg0", 0x50u, {0x387ff000ull, 0x0ull, 0x0ull}, 0xa5a58400ull},
+    {"v_cvt_f16_f32", "e64", 0xf0u, {0x387fe000ull, 0x0ull, 0x0ull}, 0xa5a50400ull},
+    {"v_cvt_f16_f32", "mul2", 0xf0u, {0x387ff000ull, 0x0ull, 0x0ull}, 0xa5a50800ull},
+    {"v_cvt_f16_f32", "mul4", 0x00u, {0x387ff000ull, 0x0ull, 0x0ull}, 0xa5a50c00ull},
+    {"v_cvt_f16_f32", "mul2", 0xf0u, {0x387fe000ull, 0x0ull, 0x0ull}, 0xa5a50000ull},
+    {"v_cvt_f32_f64", "e64", 0x00u, {0x380ffffff0000000ull, 0x0ull, 0x0ull}, 0x800000ull},
+    {"v_cvt_f32_f64", "e64", 0x50u, {0x380fffffe0000000ull, 0x0ull, 0x0ull}, 0x0ull},
+    {"v_cvt_f32_f64", "mul2", 0x50u, {0x380ffffff0000000ull, 0x0ull, 0x0ull}, 0x1000000ull},
+    {"v_cvt_f32_f64", "mul2", 0xf0u, {0x380fffffe0000000ull, 0x0ull, 0x0ull}, 0x0ull},
+};
+
+TEST(ValuConversion, JudgesTininessAfterRounding) {
+  for (const Witness &w : kTininessWitnesses) {
+    const auto [value, mask] = evaluate(w.instruction, w.variant, w.in, w.mode);
+    EXPECT_EQ(value & mask, w.expected & mask) << w.instruction << " " << w.variant << " mode=0x"
+                                               << std::hex << w.mode << " in=0x" << w.in[0];
+  }
+}
+
 TEST(ValuConversion, MatchesGfx1201Witnesses) {
   for (const Witness &w : kWitnesses) {
     const auto [value, mask] = evaluate(w.instruction, w.variant, w.in, w.mode);
