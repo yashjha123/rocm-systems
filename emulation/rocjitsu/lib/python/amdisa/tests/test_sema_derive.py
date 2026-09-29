@@ -915,12 +915,15 @@ class TestDeriveVectorUnary:
         assert ('std::fabs(sv)' in cpp) == has_abs
         if has_abs:
             assert cpp.index('std::fabs(sv)') < cpp.index('sv = -sv')
-        assert 'inst_.omod' not in cpp
-        assert 'inst_.clamp' not in cpp
         if suffix == 'F32':
             assert 'wf.fp_denorm_mode_f16_f64()' in cpp
             assert 'wf.ieee_mode()' in cpp
+            # The F32 result takes OMOD, then CLAMP (checked on gfx1201).
+            assert cpp.index('fp_mode::cvt_f32_f16') < cpp.index('div_apply_omod')
+            assert cpp.index('div_apply_omod') < cpp.index('inst_.clamp')
         else:
+            assert 'inst_.omod' not in cpp
+            assert 'inst_.clamp' not in cpp
             assert cpp.index('sv = -sv') < cpp.index('std::isnan(s)')
 
     @pytest.mark.parametrize('enc', ['ENC_VOP1', 'ENC_VOP3'])

@@ -785,6 +785,14 @@ inline V ieee_med3_num_simd(V a, V b, V c, const Wavefront &wf) {
   return result;
 }
 
+/// Whether apply_vop3_dst_mod reproduces an F32 OMOD: its scaling rounds in the
+/// host's nearest mode, while hardware rounds OMOD overflow in the guest mode.
+/// F16 and F64 fast paths leave every active OMOD to the scalar path, which
+/// applies the destination format's limits after rounding.
+inline bool simd_omod_matches_f32(const Wavefront &wf, uint32_t omod) {
+  return omod == 0 || wf.fp_round_mode_f32() == 0;
+}
+
 inline util::native<uint32_t> finalize_omod_f16_bits_simd(util::native<uint32_t> value,
                                                           uint32_t omod) {
   if (omod == 0)
@@ -2378,6 +2386,8 @@ template <typename T, typename Inst, typename BinOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f32(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (!simd_omod_matches_f32(wf, omod))
+    return false;
   constexpr std::size_t W = util::native_width_v<T>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -2639,6 +2649,8 @@ template <typename Inst, typename BinOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f64(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width64;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -2680,6 +2692,8 @@ template <typename Inst, typename UnOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f64(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width64;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -2728,6 +2742,8 @@ template <bool True16, typename Inst, typename UnOp>
   const uint32_t omod = effective_vop3_omod_f16(wf, inst.inst_.omod);
   const uint32_t finalize_omod = rounded_result ? 0 : omod;
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0 && !rounded_result)
+    return false;
   const auto modify_result = [&](util::native<float> value) {
     if (!rounded_result)
       return apply_vop3_dst_mod_f32(value, omod, clamp, floating_clamp_nan_to_zero(wf));
@@ -2931,6 +2947,8 @@ template <typename Inst, typename FmaOp>
   const uint32_t omod =
       apply_omod ? effective_vop3_omod_f32(wf, inst.inst_.omod, force_output_flush) : 0;
   const uint32_t clamp = inst.inst_.clamp;
+  if (!simd_omod_matches_f32(wf, omod))
+    return false;
   constexpr std::size_t W = util::native_width_v<T>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -2979,6 +2997,8 @@ template <bool True16, typename Inst, typename FmaOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f16(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width_v<T>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3168,6 +3188,8 @@ template <typename Inst, typename FmaOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = apply_omod ? effective_vop3_omod_f64(wf, inst.inst_.omod) : 0;
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width64;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3215,6 +3237,8 @@ template <typename Inst, typename FmaOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f32(wf, inst.inst_.omod, force_output_flush);
   const uint32_t clamp = inst.inst_.clamp;
+  if (!simd_omod_matches_f32(wf, omod))
+    return false;
   constexpr std::size_t W = util::native_width_v<T>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3259,6 +3283,8 @@ template <bool True16, typename Inst, typename FmaOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f16(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width_v<T>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3383,6 +3409,8 @@ template <typename Inst, typename FmaOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f64(wf, inst.inst_.omod);
   const uint32_t clamp = inst.inst_.clamp;
+  if (omod != 0)
+    return false;
   constexpr std::size_t W = util::native_width64;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3557,6 +3585,8 @@ template <typename Tin, typename Tout, typename Inst, typename UnOp>
   const uint32_t neg = inst.inst_.neg;
   const uint32_t omod = effective_vop3_omod_f32(wf, inst.inst_.omod, force_output_flush);
   const uint32_t clamp = inst.inst_.clamp;
+  if (!simd_omod_matches_f32(wf, omod))
+    return false;
   constexpr std::size_t W = util::native_width_v<Tout>;
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
@@ -3620,6 +3650,7 @@ template <typename Inst>
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
   const uint64_t vcc = wf.vcc_mask(exec);
+  const uint32_t omod = effective_vop3_omod_f32(wf, inst.inst_.omod);
   RegisterAccess regs(wf);
   auto src0 = regs.read_operand(inst.src0, exec);
   auto src1 = regs.read_operand(inst.src1, exec);
@@ -3639,6 +3670,11 @@ template <typename Inst>
                         ((vcc >> (base + i)) & 1u) != 0, wf.fp_round_mode_f32(),
                         wf.fp_denorm_mode_f32());
     }
+    if (omod != 0 || inst.inst_.clamp)
+      for (std::size_t i = 0; i < W; ++i) {
+        T value = div_apply_omod(static_cast<T>(r[i]), wf.fp_round_mode_f32(), omod);
+        r[i] = inst.inst_.clamp ? clamp_floating_result(value, wf) : value;
+      }
     dst.template store_native<T>(base, r, chunk);
   }
   return true;
@@ -3662,6 +3698,7 @@ template <typename Inst>
   const uint64_t chunk_full = util::mask<uint64_t>(static_cast<int>(W));
   const uint64_t exec = dpp::execution_lane_mask(inst, wf);
   const uint64_t vcc = wf.vcc_mask(exec);
+  const uint32_t omod = effective_vop3_omod_f64(wf, inst.inst_.omod);
   RegisterAccess regs(wf);
   auto src0 = regs.read_operand64(inst.src0, exec);
   auto src1 = regs.read_operand64(inst.src1, exec);
@@ -3681,6 +3718,11 @@ template <typename Inst>
                         ((vcc >> (base + i)) & 1u) != 0, wf.fp_round_mode_f16_f64(),
                         wf.fp_denorm_mode_f16_f64());
     }
+    if (omod != 0 || inst.inst_.clamp)
+      for (std::size_t i = 0; i < W; ++i) {
+        T value = div_apply_omod(static_cast<T>(r[i]), wf.fp_round_mode_f16_f64(), omod);
+        r[i] = inst.inst_.clamp ? clamp_floating_result(value, wf) : value;
+      }
     dst.template store_native<T>(base, r, chunk);
   }
   return true;

@@ -235,8 +235,15 @@ class TestLowerVectorAdd:
 
         assert f'amdgpu::fp_mode::{expected_helper}' in result
         assert expected_denorm_mode in result
+        # F16/F32/F64 scale the rounded result with guest-mode overflow.
         if result_type == SemaType.F32:
-            assert 'amdgpu::fp_mode::apply_omod_f32(v, ' in result
+            assert 'amdgpu::div_apply_omod(v, wf.fp_round_mode_f32(), ' in result
+        elif result_type == SemaType.F64:
+            assert 'amdgpu::div_apply_omod(v, wf.fp_round_mode_f16_f64(), ' in result
+        elif result_type == SemaType.F16:
+            assert 'const uint32_t effective_omod' in result
+            assert 'amdgpu::fp_mode::apply_rounded_omod_f16(' in result
+            assert 'wf.fp_round_mode_f16_f64(), wf.fp16_ovfl()' in result
         else:
             assert 'const uint32_t effective_omod' in result
             assert 'finalize_omod_' in result

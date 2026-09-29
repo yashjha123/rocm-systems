@@ -945,6 +945,39 @@ inline float apply_omod_f16(float value, uint32_t omod, bool fp16_ovfl) {
   return util::f16_to_f32(result);
 }
 
+/// @brief Whether OMOD scales F16 and F64 results after rounding them to their format.
+/// @details Measured on gfx1201, and on gfx1100 wherever it applies OMOD: div:2 does
+/// not rescue an F16 overflow, and a halved F64 result that underflows keeps its
+/// sign. Other profiles keep scaling the wide intermediate.
+inline bool omod_scales_rounded_result(rj_code_arch_t arch) {
+  return arch == ROCJITSU_CODE_ARCH_RDNA3 || arch == ROCJITSU_CODE_ARCH_RDNA3_5 ||
+         arch == ROCJITSU_CODE_ARCH_RDNA4;
+}
+
+/// @brief Scale an F16 result already rounded to its destination format.
+/// @details The half counterpart of div_apply_omod, measured on gfx1201: zero
+/// and subnormal results become positive zero, a normal result that underflows
+/// when halved keeps its sign, and overflow follows the guest rounding mode and
+/// FP16_OVFL. NaN and infinity pass through.
+inline uint16_t apply_rounded_omod_f16(uint16_t value, uint32_t omod, uint32_t round_mode,
+                                       bool fp16_ovfl) {
+  if (omod == 0 || (value & 0x7fffu) >= 0x7c00u)
+    return value;
+  const uint32_t exponent = (value >> 10) & 0x1fu;
+  if (exponent == 0)
+    return 0;
+  const uint16_t sign = value & 0x8000u;
+  const int adjusted = static_cast<int>(exponent) + (omod == 3 ? -1 : static_cast<int>(omod));
+  if (adjusted <= 0)
+    return sign;
+  if (adjusted >= 0x1f) {
+    const bool to_infinity =
+        round_mode == 0 || (round_mode == 1 && !sign) || (round_mode == 2 && sign);
+    return sign | (to_infinity && !fp16_ovfl ? 0x7c00u : 0x7bffu);
+  }
+  return static_cast<uint16_t>((value & ~0x7c00u) | (static_cast<uint32_t>(adjusted) << 10));
+}
+
 inline double finalize_omod_f64(double value, uint32_t omod) {
   if (omod == 0)
     return value;

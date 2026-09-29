@@ -384,6 +384,26 @@ def _uses_rounded_f16_call(node: SemaNode) -> bool:
     return any(_contains_call(node, call) for call in ROUNDED_F16_CALLS)
 
 
+# F32/F64 results of the transcendental unit. Their OMOD overflow rounds to
+# nearest in every MODE (V_RCP_F32 and V_RCP_F64 checked on gfx1201).
+_TRANS_CALLS = frozenset(
+    {'rcp', 'rcp_iflag', 'rsq', 'sqrt', 'sin', 'cos', 'log', 'exp', 'log2', 'exp2'}
+    | {'rcp_f64', 'rsq_f64', 'sqrt_f64'}
+)
+_TRANS_KINDS = frozenset(
+    {SemaNodeKind.SQRT, SemaNodeKind.SIN, SemaNodeKind.COS, SemaNodeKind.LOG2}
+)
+
+
+def _uses_trans_result(node: SemaNode) -> bool:
+    """Whether an expression produces a transcendental-unit result."""
+    return (
+        node.kind in _TRANS_KINDS
+        or (node.kind == SemaNodeKind.CALL and node.call_name in _TRANS_CALLS)
+        or any(_uses_trans_result(child) for child in node.children)
+    )
+
+
 def _lower_assign(node: SemaNode, ctx: LoweringContext) -> list[str]:
     """Lower an assignment statement."""
     lhs_node = node.children[0]
@@ -1134,13 +1154,15 @@ def _lower_dst_write(
             rhs = f'util::f32_to_f16_mode({rhs}, wf.fp16_ovfl())'
         else:
             rhs = f'util::f32_to_f16({rhs})'
-        # Scaling a rounded half already applies OMOD's zero and subnormal
-        # rules; an underflow produced by that scaling retains its sign.
+        # Where apply_omod scales the wide value, the rounded half still takes
+        # OMOD's zero and subnormal rules. Where it scales the rounded half,
+        # this narrowing is exact and keeps a signed underflow.
         if _contains_call(rhs_node, 'apply_omod') and not _uses_rounded_f16_call(
             rhs_node
         ):
             rhs = (
                 f'amdgpu::fp_mode::finalize_omod_f16({rhs}, '
+                'amdgpu::fp_mode::omod_scales_rounded_result(wf.cu().arch()) ? 0u : '
                 'amdgpu::fp_mode::effective_f16_omod(wf.cu().arch(), '
                 'wf.fp_denorm_mode_f16_f64(), wf.ieee_mode(), false, inst_.omod))'
             )
@@ -2212,12 +2234,57 @@ def _lower_apply_omod(node: SemaNode, ctx: LoweringContext) -> str:
             ' return amdgpu::fp_mode::apply_omod_f32(v, effective_omod); }()'
         )
     if node.ty == SemaType.F32:
+        # Scaling an F32 result rounds only on overflow: in the guest mode for
+        # ordinary results, to nearest for transcendental and fixed-nearest ones.
+        fixed_nearest = force_output_flush or _uses_trans_result(node.children[1])
+        if fixed_nearest:
+            return (
+                f'[&]() {{ {environment}float v = {rhs};'
+                f' return amdgpu::fp_mode::apply_omod_f32(v, {omod_expr}); }}()'
+            )
         return (
             f'[&]() {{ {environment}float v = {rhs};'
-            f' return amdgpu::fp_mode::apply_omod_f32(v, {omod_expr}); }}()'
+            f' return amdgpu::div_apply_omod(v, wf.fp_round_mode_f32(), {omod_expr}); }}()'
         )
     if node.ty == SemaType.F16 and _uses_rounded_f16_call(node.children[1]):
         return f'amdgpu::fp_mode::apply_omod_f16({rhs}, {omod_expr}, wf.fp16_ovfl())'
+    rounded_result = 'amdgpu::fp_mode::omod_scales_rounded_result(wf.cu().arch())'
+    if is_f64 and not _uses_trans_result(node.children[1]):
+        # Scale the rounded result; overflow rounds in the guest mode.
+        return (
+            f'[&]() {{ {environment}double v = {rhs};'
+            f' const uint32_t effective_omod = {omod_expr};'
+            ' if (effective_omod == 0) return v;'
+            f' if ({rounded_result})'
+            ' return amdgpu::div_apply_omod(v, wf.fp_round_mode_f16_f64(), effective_omod);'
+            ' if (effective_omod == 1) v *= 2.0; else if (effective_omod == 2) v *= 4.0;'
+            ' else v *= 0.5;'
+            ' return amdgpu::fp_mode::finalize_omod_f64(v, effective_omod); }()'
+        )
+    if node.ty == SemaType.F16:
+        # Round exactly as the destination write does, then scale the half.
+        if mode_arithmetic:
+            half = (
+                'amdgpu::fp_mode::finish_arithmetic_f16(v, wf.fp_round_mode_f16_f64(), '
+                'wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl())'
+            )
+        elif ctx.mode_sensitive_f16_dst:
+            half = 'util::f32_to_f16_mode(v, wf.fp16_ovfl())'
+        else:
+            half = 'util::f32_to_f16(v)'
+        return (
+            f'[&]() {{ {environment}{fp_type} v = {rhs};'
+            f' const uint32_t effective_omod = {omod_expr};'
+            ' if (effective_omod == 0) return v;'
+            f' if ({rounded_result})'
+            f' return static_cast<{fp_type}>(util::f16_to_f32('
+            f'amdgpu::fp_mode::apply_rounded_omod_f16({half}, effective_omod,'
+            ' wf.fp_round_mode_f16_f64(), wf.fp16_ovfl())));'
+            f' if (effective_omod == 1) v *= 2.0{suffix};'
+            f' else if (effective_omod == 2) v *= 4.0{suffix};'
+            f' else v *= 0.5{suffix};'
+            f' return amdgpu::fp_mode::finalize_omod_{"f64" if wide_result else "f32"}(v, effective_omod); }}()'
+        )
     return (
         f'[&]() {{ {environment}{fp_type} v = {rhs};'
         f' const uint32_t effective_omod = {omod_expr};'

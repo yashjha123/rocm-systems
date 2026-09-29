@@ -918,9 +918,11 @@ std::vector<ArithmeticCase> ldexp_f16_mode_cases() {
       add("NegativeOutput" + suffix, 0x8400u, 0xffffu, (denorm & 2u) ? 0x8200u : 0x8000u,
           denorm << 6);
     }
-    // Output scaling must precede narrowing to half, including overflow rescue.
+    // gfx950 and gfx1250 scale before narrowing to half, which rescues the
+    // overflow. gfx1201 narrows first: 65504 * 2 div:2 is +inf on hardware.
     if (encoding.words[1] != 0) {
-      add("OmodOverflowRescue", 0x7bffu, 1, 0x7bffu, 0);
+      const bool rescues = encoding.arch != ROCJITSU_CODE_ARCH_RDNA4;
+      add("OmodOverflowRescue", 0x7bffu, 1, rescues ? 0x7bffu : 0x7c00u, 0);
       cases.back().words[1] |= 3u << 27; // div:2
     }
   }
@@ -1209,6 +1211,70 @@ std::vector<ArithmeticCase> min_max_num_cases() {
       // V_MAX_NUM_F32 rules; the harness does not probe VOPD directly.
       rdna4("DualMaxNumF32OrdersSignedZero", {0xca900300u, 0x06060102u, 0u},
             {{0, 0x80000000u}, {1, 0u}, {2, 0x12345678u}}, {{6, 0u}, {7, 0x12345678u}}, 0xf0u),
+  };
+}
+
+std::vector<ArithmeticCase> omod_rounded_result_cases() {
+  // Physical gfx1201 witnesses: OMOD scales the result after rounding it to its
+  // destination format, overflow rounds in the guest mode except for the
+  // transcendental unit, and conversions and DIV_FMAS honor OMOD and CLAMP.
+  // Encodings from llvm-mc -mcpu=gfx1201; VCC is zero for DIV_FMAS.
+  const auto rdna4 = [](std::string name, std::array<uint32_t, 3> words,
+                        std::vector<std::pair<uint32_t, uint32_t>> sources,
+                        std::vector<std::pair<uint32_t, uint32_t>> expected, uint32_t mode) {
+    return ArithmeticCase{std::move(name),    ROCJITSU_CODE_ARCH_RDNA4, words,
+                          std::move(sources), std::move(expected),      mode,
+                          FE_TONEAREST};
+  };
+  return {
+      // v_trunc_f32_e64 v6, v0 mul:2 under round-toward-zero saturates.
+      rdna4("TruncF32Mul2RoundZero", {0xd5a10006u, 0x08000100u, 0u}, {{0, 0x7f7fffffu}},
+            {{6, 0x7f7fffffu}}, 0xffu),
+      // v_rndne_f16_e64 v6, v0 mul:4 under round-toward-zero saturates the half.
+      rdna4("RndneF16Mul4RoundZero", {0xd5de0006u, 0x10000100u, 0u}, {{0, 0x7bffu}, {6, 0u}},
+            {{6, 0x7bffu}}, 0xffu),
+      // v_trunc_f64_e64 v[6:7], v[0:1] mul:4 under round-toward-zero saturates.
+      rdna4("TruncF64Mul4RoundZero", {0xd5970006u, 0x10000100u, 0u},
+            {{0, 0xffffffffu}, {1, 0x7fefffffu}}, {{6, 0xffffffffu}, {7, 0x7fefffffu}}, 0xffu),
+      // v_add_f64_e64 v[6:7], v[0:1], v[2:3] mul:2 flushes a subnormal sum first.
+      rdna4("AddF64Mul2SubnormalSum", {0xd5020006u, 0x08020500u, 0u},
+            {{0, 0xffffffffu}, {1, 0x800fffffu}, {2, 0u}, {3, 0u}}, {{6, 0u}, {7, 0u}}, 0xf0u),
+      // div:2 of -min_normal underflows to -0.
+      rdna4("AddF64Div2SignedUnderflow", {0xd5020006u, 0x18020500u, 0u},
+            {{0, 0u}, {1, 0x80100000u}, {2, 0u}, {3, 0u}}, {{6, 0u}, {7, 0x80000000u}}, 0xf0u),
+      // v_add_f16_e64 v6, v0, v1 div:2: -min_normal underflows to -0.
+      rdna4("AddF16Div2SignedUnderflow", {0xd5320006u, 0x18020300u, 0u},
+            {{0, 0x8400u}, {1, 0u}, {6, 0u}}, {{6, 0x8000u}}, 0xf0u),
+      // v_mul_f16_e64 v6, v0, v1 div:2: 1.5 * -0x83ff rounds to -min_normal first.
+      rdna4("MulF16Div2SignedUnderflow", {0xd5350006u, 0x18020300u, 0u},
+            {{0, 0x3e00u}, {1, 0x83ffu}, {6, 0u}}, {{6, 0x8000u}}, 0xf0u),
+      // v_cvt_f64_i32_e64 v[6:7], v0 div:2
+      rdna4("CvtF64I32Div2", {0xd5840006u, 0x18000100u, 0u}, {{0, 1u}}, {{6, 0u}, {7, 0x3fe00000u}},
+            0xf0u),
+      // v_cvt_f64_u32_e64 v[6:7], v0 clamp
+      rdna4("CvtF64U32Clamp", {0xd5968006u, 0x00000100u, 0u}, {{0, 0xffffffffu}},
+            {{6, 0u}, {7, 0x3ff00000u}}, 0xf0u),
+      // v_cvt_f32_f16_e64 v6, v0 mul:2 scales the smallest half subnormal.
+      rdna4("CvtF32F16Mul2", {0xd58b0006u, 0x08000100u, 0u}, {{0, 0x0001u}}, {{6, 0x34000000u}},
+            0xf0u),
+      // v_cvt_f32_f16_e64 v6, v0 clamp
+      rdna4("CvtF32F16Clamp", {0xd58b8006u, 0x00000100u, 0u}, {{0, 0xbc00u}}, {{6, 0u}}, 0xf0u),
+      // v_div_fmas_f32 v6, v0, v1, v2 mul:2
+      rdna4("DivFmasF32Mul2", {0xd6370006u, 0x0c0a0300u, 0u}, {{0, 0x7f7fffffu}, {1, 1u}, {2, 0u}},
+            {{6, 0x357fffffu}}, 0xf0u),
+      // v_div_fmas_f32 v6, v0, v1, v2 clamp: inf * 0 is NaN, which CLAMP makes +0.
+      rdna4("DivFmasF32ClampNan", {0xd6378006u, 0x040a0300u, 0u},
+            {{0, 0x7f800000u}, {1, 0u}, {2, 0u}}, {{6, 0u}}, 0xf0u),
+      // v_div_fmas_f64 v[6:7], v[0:1], v[2:3], v[4:5] mul:2 flushes a subnormal result.
+      rdna4("DivFmasF64Mul2Subnormal", {0xd6380006u, 0x0c120500u, 0u},
+            {{0, 0u}, {1, 0xbff00000u}, {2, 1u}, {3, 0u}, {4, 0u}, {5, 0u}}, {{6, 0u}, {7, 0u}},
+            0xf0u),
+      // v_rcp_f32_e64 v6, v0 mul:4: TRANS overflow is +inf even under round-toward-zero.
+      rdna4("RcpF32Mul4RoundZero", {0xd5aa0006u, 0x10000100u, 0u}, {{0, 0x00800000u}},
+            {{6, 0x7f800000u}}, 0xffu),
+      // v_rsq_f64_e64 v[6:7], v[0:1] mul:2 of -1 returns the negative default NaN.
+      rdna4("RsqF64Mul2Negative", {0xd5b10006u, 0x08000100u, 0u}, {{0, 0u}, {1, 0xbff00000u}},
+            {{6, 0u}, {7, 0xfff80000u}}, 0xf0u),
   };
 }
 
@@ -2198,6 +2264,12 @@ INSTANTIATE_TEST_SUITE_P(MinimumMaximum, ValuFpModeTest, testing::ValuesIn(minim
                          });
 
 INSTANTIATE_TEST_SUITE_P(MinMaxNum, ValuFpModeTest, testing::ValuesIn(min_max_num_cases()),
+                         [](const testing::TestParamInfo<ArithmeticCase> &info) {
+                           return info.param.name;
+                         });
+
+INSTANTIATE_TEST_SUITE_P(OmodRoundedResult, ValuFpModeTest,
+                         testing::ValuesIn(omod_rounded_result_cases()),
                          [](const testing::TestParamInfo<ArithmeticCase> &info) {
                            return info.param.name;
                          });

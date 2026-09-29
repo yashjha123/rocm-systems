@@ -3205,7 +3205,9 @@ def _simd_probe_line(
                     if true16_vop3
                     else 'ROCJITSU_TRY_SIMD_CVT_F32_F16_VOP3'
                 )
-                return f'  {macro}();'
+                # The shortcut applies source modifiers only; OMOD and CLAMP
+                # use the scalar body.
+                return f'  if (!inst.inst_.omod && !inst.inst_.clamp) {{\n  {macro}();\n  }}'
             if true16_vop3:
                 return None
             if base in _VOP3_UNARY_SKIP:
@@ -3245,9 +3247,11 @@ def _simd_probe_line(
                 ovfl_probe = f'  ROCJITSU_TRY_SIMD_VOP1_UNARY({cpp_tin}, {cpp_tout}, {_fp16_ovfl_cpp_op(cpp_op)});'
                 return _mode_aware_f16_result_simd_probe(probe, ovfl_probe)
             return probe
-        # VOP3 twins of the mixed-width f64<->b32 cvt ops. Their generated VOP3
+        # VOP3 twins of the mixed-width f64<->b32 cvt ops. The f64->b32 VOP3
         # bodies drop the abs/neg/omod/clamp modifier reads (verified per-op),
-        # so routing through the existing cvt glue is bit-exact. (A symmetric
+        # so routing through the existing cvt glue is bit-exact. The glue has no
+        # output modifiers, and the integer-to-f64 bodies apply OMOD and CLAMP,
+        # so the b32->f64 twins use it only without them. (A symmetric
         # SIMD_VOP1_UNARY_F64 fallback was considered but explicitly NOT added:
         # the f64-unary VOP3 forms apply modifiers via apply_vop3_*_mod_f64 —
         # routed through SIMD_VOP3_UNARY_FP64 above instead — and the rcp/rsq
@@ -3265,7 +3269,8 @@ def _simd_probe_line(
         speccvtinv3 = SIMD_CVT_B32_TO_F64.get(base + '_vop1')
         if speccvtinv3 is not None:
             in_t, cpp_op = speccvtinv3
-            return f'  ROCJITSU_TRY_SIMD_CVT_B32_TO_F64({in_t}, {cpp_op});'
+            probe = f'  ROCJITSU_TRY_SIMD_CVT_B32_TO_F64({in_t}, {cpp_op});'
+            return f'  if (!inst.inst_.omod && !inst.inst_.clamp) {{\n{probe}\n  }}'
     return None
 
 

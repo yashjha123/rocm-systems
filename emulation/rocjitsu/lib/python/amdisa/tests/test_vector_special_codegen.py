@@ -284,11 +284,14 @@ def test_vop3_f16_simd_probes_split_true16_from_generic():
     assert simd_probe_line('v_cmp_class_f16_vop3', true16_vop3=True).startswith(
         '  ROCJITSU_TRY_SIMD_VOP3_CLASS_TRUE16_B32'
     )
+    # The conversion shortcut has no OMOD or CLAMP.
     assert simd_probe_line('v_cvt_f32_f16_vop3') == (
-        '  ROCJITSU_TRY_SIMD_CVT_F32_F16_VOP3();'
+        '  if (!inst.inst_.omod && !inst.inst_.clamp) {\n'
+        '  ROCJITSU_TRY_SIMD_CVT_F32_F16_VOP3();\n  }'
     )
     assert simd_probe_line('v_cvt_f32_f16_vop3', true16_vop3=True) == (
-        '  ROCJITSU_TRY_SIMD_CVT_F32_F16_VOP3_TRUE16();'
+        '  if (!inst.inst_.omod && !inst.inst_.clamp) {\n'
+        '  ROCJITSU_TRY_SIMD_CVT_F32_F16_VOP3_TRUE16();\n  }'
     )
 
 

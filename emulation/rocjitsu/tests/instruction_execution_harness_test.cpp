@@ -2573,9 +2573,11 @@ TEST(NewerOmodExecutionTest, F32AndF64FinalizeExactResultsInScalarAndSimdPaths) 
           decode_valid(*decoder, unclamped_f64_words.data()));
       ASSERT_NE(unclamped_f64, nullptr);
       EXPECT_TRUE(cu->execute_instruction(unclamped_f64.get(), *wf).succeeded());
+      // gfx1201 halves the rounded F64 result like F32: -min_normal div:2 is -0.
+      const bool keeps_f64_sign = test_case.arch == ROCJITSU_CODE_ARCH_RDNA4;
       for (std::size_t lane = 0; lane < kF64Inputs.size(); ++lane) {
         EXPECT_EQ(cu->read_vgpr(vb + 8, lane), 0u);
-        EXPECT_EQ(cu->read_vgpr(vb + 9, lane), 0u);
+        EXPECT_EQ(cu->read_vgpr(vb + 9, lane), keeps_f64_sign && lane == 1 ? 0x80000000u : 0u);
       }
 
       if (!wf->is_halted())

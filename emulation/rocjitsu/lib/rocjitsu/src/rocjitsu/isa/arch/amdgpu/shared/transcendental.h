@@ -190,6 +190,9 @@ inline double rcp_f64(double x) {
   return 1.0 / x;
 }
 
+/// @brief Default NaN of an invalid F64 operation (0xfff8000000000000 on gfx1201).
+inline double default_nan_f64() { return std::bit_cast<double>(0xfff8000000000000ULL); }
+
 /// @brief 1.0 / sqrt(x) (double-precision reciprocal square root, ~2 ULP).
 inline double rsq_f64(double x) {
   if (std::isnan(x))
@@ -197,7 +200,7 @@ inline double rsq_f64(double x) {
   if (x == 0.0)
     return std::copysign(std::numeric_limits<double>::infinity(), x);
   if (x < 0.0)
-    return std::numeric_limits<double>::quiet_NaN();
+    return default_nan_f64();
   if (std::isinf(x))
     return 0.0;
   return 1.0 / std::sqrt(x);

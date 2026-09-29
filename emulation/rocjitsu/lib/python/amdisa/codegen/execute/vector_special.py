@@ -1015,7 +1015,7 @@ def _gen_division_result(
     L = ['  uint64_t exec = wf.exec();']
     if operation == 'fmas':
         L.append('  const uint64_t vcc = wf.vcc_mask(exec);')
-    elif is_vop3:
+    if is_vop3:
         L.append(
             f'  const uint32_t omod = amdgpu::fp_mode::effective_omod(wf.cu().arch(), wf.fp_denorm_mode_{mode}(), wf.ieee_mode(), inst_.omod);'
         )
@@ -1031,7 +1031,8 @@ def _gen_division_result(
     L.append(
         f'    {fp_type} result = div_{operation}(s0, s1, s2, {post_scale}wf.fp_round_mode_{mode}(), wf.fp_denorm_mode_{mode}());'
     )
-    if operation == 'fixup' and is_vop3:
+    if is_vop3:
+        # Both scale the rounded result, then clamp (checked on gfx1201).
         L.append(
             f'    result = div_apply_omod(result, wf.fp_round_mode_{mode}(), omod);'
         )
