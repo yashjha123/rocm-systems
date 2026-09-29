@@ -453,6 +453,24 @@ class TestDeriveScalarBinop:
                 'ieee_minmax3<false, true, true>(',
                 'wf.fp_denorm_mode_f16_f64())',
             ),
+            ('V_MAX_NUM_F32', 'ieee_minmax_num<true>(', 'wf.fp_denorm_mode_f32())'),
+            (
+                'V_MIN_NUM_F64',
+                'ieee_minmax_num<false>(',
+                'wf.fp_denorm_mode_f16_f64())',
+            ),
+            (
+                'V_MAXMIN_NUM_F16',
+                'ieee_minmax3_num<true, false, true>(',
+                'wf.fp_denorm_mode_f16_f64())',
+            ),
+            (
+                'V_MIN3_NUM_F32',
+                'ieee_minmax3_num<false, false>(',
+                'wf.fp_denorm_mode_f32())',
+            ),
+            ('V_MED3_NUM_F32', 'ieee_med3_num(', 'wf.fp_denorm_mode_f32())'),
+            ('V_MED3_NUM_F16', 'ieee_med3_num<true>(', 'wf.fp_denorm_mode_f16_f64())'),
         ],
     )
     def test_vector_minimum_maximum_use_mode_helper(self, name, helper, mode):
@@ -464,6 +482,7 @@ class TestDeriveScalarBinop:
         assert f'amdgpu::fp_mode::{helper}' in cpp
         assert f'wf.cu().arch(), {mode}' in cpp
         assert 'quiet_NaN' not in cpp
+        assert 'std::fm' not in cpp
 
     def test_gfx1250_scalar_cvt_pk_rtz_uses_rtz_helper(self):
         sem = derive_semantics('S_CVT_PK_RTZ_F16_F32', 'ENC_SOP2')

@@ -1290,10 +1290,13 @@ class _VectorBinop(_ScalarDeriver):
 
         src0 = _cast(_src(0), ty)
         src1 = _cast(_src(1), ty)
-        if op in ('minimum', 'maximum'):
-            # V_MINIMUM/V_MAXIMUM apply MODE input flushing and keep the NaN
-            # operand; S_MINIMUM/S_MAXIMUM keep the plain inline template.
-            fn = f'ieee_{op}'
+        if op in ('minimum', 'maximum') or (
+            op in ('min', 'max') and ty.base == 'F' and '_num_' in name_lower
+        ):
+            # V_MINIMUM/V_MAXIMUM and V_MIN_NUM/V_MAX_NUM apply MODE input
+            # flushing and the measured NaN and signed-zero rules; S_* forms
+            # keep the plain inline templates.
+            fn = f'ieee_{op}_num' if op in ('min', 'max') else f'ieee_{op}'
             result = SemaNode(
                 SemaNodeKind.CALL, ty=ty, call_name=fn, children=(_id(fn), src0, src1)
             )
@@ -1303,7 +1306,14 @@ class _VectorBinop(_ScalarDeriver):
         return SemaBlock(sem.name, ExecModel.VECTOR, body)
 
 
-_IEEE_MINMAX3 = ('minimum3', 'maximum3', 'minimummaximum', 'maximumminimum')
+_IEEE_MINMAX3 = (
+    'minimum3',
+    'maximum3',
+    'minimummaximum',
+    'maximumminimum',
+    'minmax_num',
+    'maxmin_num',
+)
 
 
 @_register('vector_ternary')
@@ -1380,9 +1390,14 @@ class _VectorTernary(_ScalarDeriver):
         elif op in ('fma', 'fmac'):
             result = SemaNode(SemaNodeKind.FMA, ty=ty, children=(src0, src1, src2))
         else:
-            # The three-operand IEEE minimum/maximum forms nest the binary
-            # V_MINIMUM/V_MAXIMUM operand rules.
-            fn = f'ieee_{op}' if op in _IEEE_MINMAX3 else op
+            # The three-operand IEEE min/max forms nest the binary V_MINIMUM/
+            # V_MAXIMUM or V_MIN_NUM/V_MAX_NUM operand rules.
+            if op in _IEEE_MINMAX3:
+                fn = f'ieee_{op}'
+            elif op in ('min3', 'max3', 'med3') and '_NUM_F' in sem.name:
+                fn = f'ieee_{op}_num'
+            else:
+                fn = op
             result = SemaNode(
                 SemaNodeKind.CALL,
                 ty=ty,

@@ -1162,6 +1162,56 @@ std::vector<ArithmeticCase> minimum_maximum_cases() {
   };
 }
 
+std::vector<ArithmeticCase> min_max_num_cases() {
+  // Physical gfx1201 witnesses: the *_NUM forms flush input denormals, order
+  // -0 below +0, ignore a single NaN operand, and return the quieted src0 when
+  // both are NaN. V_MED3_NUM falls back to V_MIN3_NUM on any NaN operand.
+  // Encodings from llvm-mc -mcpu=gfx1201.
+  const auto rdna4 = [](std::string name, std::array<uint32_t, 3> words,
+                        std::vector<std::pair<uint32_t, uint32_t>> sources,
+                        std::vector<std::pair<uint32_t, uint32_t>> expected, uint32_t mode) {
+    return ArithmeticCase{std::move(name),    ROCJITSU_CODE_ARCH_RDNA4, words,
+                          std::move(sources), std::move(expected),      mode,
+                          FE_TONEAREST};
+  };
+  constexpr std::array<uint32_t, 3> MIN_NUM_F32_E64{0xd5150006u, 0x00020300u, 0u};
+  constexpr std::array<uint32_t, 3> MED3_NUM_F32{0xd6310006u, 0x040a0300u, 0u};
+  constexpr std::array<uint32_t, 3> MINMAX_NUM_F32{0xd6680006u, 0x040a0300u, 0u};
+  return {
+      // v_max_num_f32_e32 v6, v0, v1
+      rdna4("MaxNumF32OrdersSignedZero", {0x2c0c0300u, 0u, 0u}, {{0, 0x80000000u}, {1, 0u}},
+            {{6, 0u}}, 0xf0u),
+      rdna4("MinNumF32BothNanQuietsSrc0", MIN_NUM_F32_E64, {{0, 0x7f800001u}, {1, 0x7fc00000u}},
+            {{6, 0x7fc00001u}}, 0xf0u),
+      rdna4("MinNumF32IgnoresSignalingNan", MIN_NUM_F32_E64, {{0, 0x7f800001u}, {1, 0x3f800000u}},
+            {{6, 0x3f800000u}}, 0xf0u),
+      // v_max_num_f64_e32 v[6:7], v[0:1], v[2:3]
+      rdna4("MaxNumF64FlushesInput", {0x1c0c0500u, 0u, 0u}, {{0, 1u}, {1, 0u}, {2, 0u}, {3, 0u}},
+            {{6, 0u}, {7, 0u}}, 0x00u),
+      // v_min_num_f16_e32 v6, v0, v1
+      rdna4("MinNumF16BothNanKeepsSrc0Sign", {0x600c0300u, 0u, 0u},
+            {{0, 0xfe00u}, {1, 0x7e00u}, {6, 0u}}, {{6, 0xfe00u}}, 0xf0u),
+      rdna4("Max3NumF32FlushesSrc2", {0xd62a0006u, 0x040a0300u, 0u},
+            {{0, 0x80000000u}, {1, 0x80000000u}, {2, 1u}}, {{6, 0u}}, 0x00u),
+      rdna4("Min3NumF16OrdersSignedZero", {0xd62b0006u, 0x040a0300u, 0u},
+            {{0, 0u}, {1, 0x8000u}, {2, 0u}, {6, 0u}}, {{6, 0x8000u}}, 0xf0u),
+      rdna4("Med3NumF32NanSelectsMin3", MED3_NUM_F32, {{0, 0x7fc00000u}, {1, 1u}, {2, 0u}},
+            {{6, 0u}}, 0xf0u),
+      rdna4("Med3NumF32NegativeZeroMedian", MED3_NUM_F32,
+            {{0, 0x80000000u}, {1, 0u}, {2, 0x80000000u}}, {{6, 0x80000000u}}, 0xf0u),
+      rdna4("Med3NumF16FlushesInput", {0xd6320006u, 0x040a0300u, 0u},
+            {{0, 1u}, {1, 0u}, {2, 1u}, {6, 0u}}, {{6, 0u}}, 0x00u),
+      rdna4("MinMaxNumF32IgnoresInnerNanPair", MINMAX_NUM_F32,
+            {{0, 0x7f800001u}, {1, 0x7fc00000u}, {2, 0x3f800000u}}, {{6, 0x3f800000u}}, 0xf0u),
+      rdna4("MaxMinNumF16OrdersSignedZero", {0xd66b0006u, 0x040a0300u, 0u},
+            {{0, 0x8000u}, {1, 0u}, {2, 0x3c00u}, {6, 0u}}, {{6, 0u}}, 0xf0u),
+      // v_dual_max_num_f32 v6, v0, v1 :: v_dual_mov_b32 v7, v2 shares the
+      // V_MAX_NUM_F32 rules; the harness does not probe VOPD directly.
+      rdna4("DualMaxNumF32OrdersSignedZero", {0xca900300u, 0x06060102u, 0u},
+            {{0, 0x80000000u}, {1, 0u}, {2, 0x12345678u}}, {{6, 0u}, {7, 0x12345678u}}, 0xf0u),
+  };
+}
+
 std::vector<ArithmeticCase> f16_fma_nan_cases() {
   std::vector<ArithmeticCase> cases;
   for (rj_code_arch_t arch : {ROCJITSU_CODE_ARCH_RDNA3, ROCJITSU_CODE_ARCH_RDNA3_5,
@@ -2002,6 +2052,11 @@ INSTANTIATE_TEST_SUITE_P(MinimumMaximum, ValuFpModeTest, testing::ValuesIn(minim
                            return info.param.name;
                          });
 
+INSTANTIATE_TEST_SUITE_P(MinMaxNum, ValuFpModeTest, testing::ValuesIn(min_max_num_cases()),
+                         [](const testing::TestParamInfo<ArithmeticCase> &info) {
+                           return info.param.name;
+                         });
+
 INSTANTIATE_TEST_SUITE_P(F16FmaOmod, ValuFpModeTest, testing::ValuesIn(f16_fma_omod_cases()),
                          [](const testing::TestParamInfo<ArithmeticCase> &info) {
                            return info.param.name;
@@ -2140,6 +2195,37 @@ TEST(ValuFpModeHelpers, IeeeMinmaxOperandRules) {
                                                             util::f16_to_f32(0x21c8u),
                                                             util::f16_to_f32(0xb723u), RDNA4, 3)),
             0xff2du);
+}
+
+TEST(ValuFpModeHelpers, IeeeMinmaxNumOperandRules) {
+  // The per-lane counterpart of the MinMaxNum witnesses.
+  using amdgpu::fp_mode::ieee_med3_num;
+  using amdgpu::fp_mode::ieee_minmax3_num;
+  using amdgpu::fp_mode::ieee_minmax_num;
+  constexpr rj_code_arch_t RDNA4 = ROCJITSU_CODE_ARCH_RDNA4;
+  const auto f32 = [](uint32_t bits) { return std::bit_cast<float>(bits); };
+  const auto bits = [](float value) { return std::bit_cast<uint32_t>(value); };
+  EXPECT_EQ(bits(ieee_minmax_num<true>(-0.0f, 0.0f, RDNA4, 3)), 0u);
+  EXPECT_EQ(bits(ieee_minmax_num<false>(0.0f, -0.0f, RDNA4, 3)), 0x80000000u);
+  EXPECT_EQ(bits(ieee_minmax_num<false>(f32(0x7f800001u), f32(0x7fc00000u), RDNA4, 3)),
+            0x7fc00001u);
+  EXPECT_EQ(bits(ieee_minmax_num<false>(f32(0x7f800001u), 1.0f, RDNA4, 3)), 0x3f800000u);
+  EXPECT_EQ(bits(ieee_minmax_num<true>(f32(1u), 0.0f, RDNA4, 0)), 0u);
+  EXPECT_EQ(bits(ieee_minmax_num<true>(f32(1u), 0.0f, RDNA4, 1)), 1u);
+  EXPECT_EQ(std::bit_cast<uint64_t>(
+                ieee_minmax_num<true>(std::bit_cast<double>(uint64_t{1}), 0.0, RDNA4, 0)),
+            0u);
+  EXPECT_EQ(util::f32_to_f16(ieee_minmax_num<false, true>(util::f16_to_f32(0xfe00u),
+                                                          util::f16_to_f32(0x7e00u), RDNA4, 3)),
+            0xfe00u);
+  EXPECT_EQ(bits(ieee_minmax3_num<false, true>(f32(0x7f800001u), f32(0x7fc00000u), 1.0f, RDNA4, 3)),
+            0x3f800000u);
+  EXPECT_EQ(bits(ieee_med3_num(f32(0x7fc00000u), f32(1u), 0.0f, RDNA4, 3)), 0u);
+  EXPECT_EQ(bits(ieee_med3_num(-0.0f, 0.0f, -0.0f, RDNA4, 3)), 0x80000000u);
+  EXPECT_EQ(bits(ieee_med3_num(0.0f, -0.0f, 0.0f, RDNA4, 3)), 0u);
+  EXPECT_EQ(bits(ieee_med3_num(3.0f, 1.0f, 2.0f, RDNA4, 3)), bits(2.0f));
+  // Other profiles keep host fmax.
+  EXPECT_EQ(bits(ieee_minmax_num<true>(f32(1u), 0.0f, ROCJITSU_CODE_ARCH_CDNA5, 0)), 1u);
 }
 
 TEST(ValuFpModeHelpers, F16FmaRetainsTinyProduct) {

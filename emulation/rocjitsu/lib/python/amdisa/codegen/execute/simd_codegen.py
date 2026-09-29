@@ -232,31 +232,30 @@ SIMD_VOP2_BINARY: dict[str, tuple[str, str]] = {
         ' return util::f32_to_f16_simd('
         'util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b))); }',
     ),
-    # IEEE-2019 maximumNumber/minimumNumber (gfx1250/rdna4). Their generated
-    # scalar bodies are std::fmax / std::fmin — byte-for-byte the legacy
-    # v_max_f*/v_min_f* bodies above — so the functors are identical and inherit
-    # the same accepted NaN-payload / signed-zero-tie carve-out. The _vop3 twins
-    # auto-route from these _vop2 entries (f32 -> VOP3_BINARY_FP, f16 ->
-    # VOP3_BINARY_INT with the widening functor, mirroring v_max_f16_vop3).
+    # IEEE-2019 maximumNumber/minimumNumber (gfx1250/rdna4). The functors share
+    # fp_mode::ieee_minmax_num with the scalar bodies through
+    # ieee_minmax_num_simd. The _vop3 twins auto-route from these _vop2 entries
+    # (f32 -> VOP3_BINARY_FP, f16 -> VOP3_BINARY_INT with the widening functor,
+    # mirroring v_max_f16_vop3).
     'v_max_num_f32_vop2': (
         'float32_t',
-        '[](auto a, auto b) { return util::stdx::fmax(a, b); }',
+        '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<true>(a, b, wf); }',
     ),
     'v_min_num_f32_vop2': (
         'float32_t',
-        '[](auto a, auto b) { return util::stdx::fmin(a, b); }',
+        '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<false>(a, b, wf); }',
     ),
     'v_max_num_f16_vop2': (
         'uint32_t',
-        '[](auto a, auto b) {'
-        ' return util::f32_to_f16_simd('
-        'util::stdx::fmax(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b))); }',
+        '[&wf](auto a, auto b) {'
+        ' return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<true, true>('
+        'util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf)); }',
     ),
     'v_min_num_f16_vop2': (
         'uint32_t',
-        '[](auto a, auto b) {'
-        ' return util::f32_to_f16_simd('
-        'util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b))); }',
+        '[&wf](auto a, auto b) {'
+        ' return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<false, true>('
+        'util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf)); }',
     ),
     # v_cvt_pkrtz_f16_f32 (both spellings): pack two f32 -> two f16 with
     # round-toward-zero narrowing; proven bit-identical to the scalar helper.
@@ -982,14 +981,13 @@ SIMD_VOP2_FMA_F64 = {'v_fmac_f64_vop2'}
 
 # template_name -> cpp_bin_op (over native<double>, no modifiers). VOP2 f64
 # binary forms: scalar bodies read src0/vsrc1 as read_lane64, no abs/neg/omod/
-# clamp. add/mul are bit-exact; max_num/min_num use util::stdx::fmax/fmin (scalar
-# is std::fmax/std::fmin) with the same accepted NaN-payload / signed-zero-tie
-# carve-out as the f64 vop3 forms in SIMD_VOP3_BINARY_FP64.
+# clamp. add/mul are bit-exact; max_num/min_num share fp_mode::ieee_minmax_num
+# with the scalar bodies through ieee_minmax_num_simd.
 SIMD_VOP2_BINARY_FP64: dict[str, str] = {
     'v_add_f64_vop2': '[](auto a, auto b) { return a + b; }',
     'v_mul_f64_vop2': '[](auto a, auto b) { return a * b; }',
-    'v_max_num_f64_vop2': '[](auto a, auto b) { return util::stdx::fmax(a, b); }',
-    'v_min_num_f64_vop2': '[](auto a, auto b) { return util::stdx::fmin(a, b); }',
+    'v_max_num_f64_vop2': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<true>(a, b, wf); }',
+    'v_min_num_f64_vop2': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<false>(a, b, wf); }',
 }
 
 
@@ -2006,9 +2004,9 @@ SIMD_VOP3_BINARY_FP64: dict[str, str] = {
     'v_mul_f64_vop3': '[](auto a, auto b) { return a * b; }',
     'v_max_f64_vop3': '[](auto a, auto b) { return util::stdx::fmax(a, b); }',
     'v_min_f64_vop3': '[](auto a, auto b) { return util::stdx::fmin(a, b); }',
-    # IEEE-2019 num twins: scalar bodies are the same std::fmax / std::fmin.
-    'v_max_num_f64_vop3': '[](auto a, auto b) { return util::stdx::fmax(a, b); }',
-    'v_min_num_f64_vop3': '[](auto a, auto b) { return util::stdx::fmin(a, b); }',
+    # IEEE-2019 maximumNumber/minimumNumber: fp_mode::ieee_minmax_num.
+    'v_max_num_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<true>(a, b, wf); }',
+    'v_min_num_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_num_simd<false>(a, b, wf); }',
     # IEEE-2019 maximum/minimum (NaN-propagating, signed-zero-ordered).
     'v_maximum_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<true>(a, b, wf); }',
     'v_minimum_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<false>(a, b, wf); }',
@@ -2145,12 +2143,12 @@ SIMD_VOP3_TERNARY_FP32: dict[str, str] = {
     # minmax = max(min(a,b),c); maxmin = min(max(a,b),c). (RDNA3+.)
     'v_minmax_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
     'v_maxmin_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
-    # IEEE-2019 num twins (gfx1250/rdna4): identical fmax/fmin compositions as
-    # the legacy max3/min3/minmax/maxmin bodies above.
-    'v_max3_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmax(a, b), c); }',
-    'v_min3_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmin(a, b), c); }',
-    'v_minmax_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
-    'v_maxmin_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
+    # IEEE-2019 num forms (gfx1250/rdna4): the nested binary V_MIN_NUM/V_MAX_NUM
+    # rules of fp_mode::ieee_minmax3_num.
+    'v_max3_num_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<true>(amdgpu::ieee_minmax_num_simd<true>(a, b, wf), c, wf); }',
+    'v_min3_num_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<false>(amdgpu::ieee_minmax_num_simd<false>(a, b, wf), c, wf); }',
+    'v_minmax_num_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<true>(amdgpu::ieee_minmax_num_simd<false>(a, b, wf), c, wf); }',
+    'v_maxmin_num_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<false>(amdgpu::ieee_minmax_num_simd<true>(a, b, wf), c, wf); }',
     # IEEE-2019 maximum/minimum 3-input + combined forms: the nested binary
     # V_MINIMUM/V_MAXIMUM rules of fp_mode::ieee_minmax3.
     'v_maximum3_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true>(amdgpu::ieee_minmax_simd<true>(a, b, wf), c, wf); }',
@@ -2186,11 +2184,11 @@ SIMD_VOP3_TERNARY_FP16: dict[str, str] = {
     'v_med3_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(util::stdx::fmax(a, b), c), util::stdx::fmin(a, b)); }',
     'v_minmax_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
     'v_maxmin_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
-    # IEEE-2019 num twins (f16): same fmax/fmin compositions, widened by the glue.
-    'v_max3_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmax(a, b), c); }',
-    'v_min3_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmin(a, b), c); }',
-    'v_minmax_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
-    'v_maxmin_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
+    # IEEE-2019 num forms (f16, widened by the glue): fp_mode::ieee_minmax3_num.
+    'v_max3_num_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<true, true>(amdgpu::ieee_minmax_num_simd<true, true>(a, b, wf), c, wf); }',
+    'v_min3_num_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<false, true>(amdgpu::ieee_minmax_num_simd<false, true>(a, b, wf), c, wf); }',
+    'v_minmax_num_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<true, true>(amdgpu::ieee_minmax_num_simd<false, true>(a, b, wf), c, wf); }',
+    'v_maxmin_num_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_num_simd<false, true>(amdgpu::ieee_minmax_num_simd<true, true>(a, b, wf), c, wf); }',
     # IEEE-2019 maximum/minimum 3-input + combined (f16; widened to f32 by glue).
     'v_maximum3_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true, true>(amdgpu::ieee_minmax_simd<true, true>(a, b, wf), c, wf); }',
     'v_minimum3_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<false, true>(amdgpu::ieee_minmax_simd<false, true>(a, b, wf), c, wf); }',

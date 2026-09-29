@@ -2227,8 +2227,7 @@ class CodeGenerator:
                     ('VopdMaxF32', 'VopdMaxNumF32'),
                     '''
                     {
-                      float result = std::fmax(std::bit_cast<float>(src0),
-                                               std::bit_cast<float>(src1));
+                      float result = amdgpu::fp_mode::ieee_minmax_num<true>(std::bit_cast<float>(src0), std::bit_cast<float>(src1), wf.cu().arch(), wf.fp_denorm_mode_f32());
                       return std::bit_cast<uint32_t>(result);
                     }
                     ''',
@@ -2237,8 +2236,7 @@ class CodeGenerator:
                     ('VopdMinF32', 'VopdMinNumF32'),
                     '''
                     {
-                      float result = std::fmin(std::bit_cast<float>(src0),
-                                               std::bit_cast<float>(src1));
+                      float result = amdgpu::fp_mode::ieee_minmax_num<false>(std::bit_cast<float>(src0), std::bit_cast<float>(src1), wf.cu().arch(), wf.fp_denorm_mode_f32());
                       return std::bit_cast<uint32_t>(result);
                     }
                     ''',

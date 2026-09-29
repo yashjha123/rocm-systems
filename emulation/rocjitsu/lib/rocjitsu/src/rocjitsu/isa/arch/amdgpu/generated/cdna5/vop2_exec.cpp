@@ -1317,13 +1317,13 @@ void VMinNumF16Vop2::execute_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<2, true, true, 3>(inst, wf, [&](auto a, auto b) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a, auto b) {
           if (wf.fp16_ovfl())
-            return ([](auto a, auto b) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+            return ([&wf](auto a, auto b) {
+              return util::f32_to_f16_ovfl_simd(amdgpu::ieee_minmax_num_simd<false, true>(
+                  util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
             })(a, b);
-          return ([](auto a, auto b) {
-            return util::f32_to_f16_simd(
-                util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+          return ([&wf](auto a, auto b) {
+            return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<false, true>(
+                util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
           })(a, b);
         })(std::bit_cast<util::native<uint32_t>>(a), std::bit_cast<util::native<uint32_t>>(b)));
       }))
@@ -1334,13 +1334,14 @@ void VMinNumF16Vop2::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            std::fmin(util::f16_to_f32(
-                          static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                      util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane)))),
-            wf.fp16_ovfl()));
+        amdgpu::sdwa::round_f16_result(*this, wf,
+                                       amdgpu::fp_mode::ieee_minmax_num<false, true>(
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane))),
+                                           wf.cu().arch(), wf.fp_denorm_mode_f16_f64()),
+                                       wf.fp16_ovfl()));
   }
 }
 
@@ -1368,13 +1369,13 @@ RJ_NOINLINE void VMinNumF16Vop2::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<2, true, true, 3>(inst, wf, [&](auto a, auto b) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a, auto b) {
           if (wf.fp16_ovfl())
-            return ([](auto a, auto b) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+            return ([&wf](auto a, auto b) {
+              return util::f32_to_f16_ovfl_simd(amdgpu::ieee_minmax_num_simd<false, true>(
+                  util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
             })(a, b);
-          return ([](auto a, auto b) {
-            return util::f32_to_f16_simd(
-                util::stdx::fmin(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+          return ([&wf](auto a, auto b) {
+            return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<false, true>(
+                util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
           })(a, b);
         })(std::bit_cast<util::native<uint32_t>>(a), std::bit_cast<util::native<uint32_t>>(b)));
       }))
@@ -1385,13 +1386,14 @@ RJ_NOINLINE void VMinNumF16Vop2::execute_modifier_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            std::fmin(util::f16_to_f32(
-                          static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                      util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane)))),
-            wf.fp16_ovfl()));
+        amdgpu::sdwa::round_f16_result(*this, wf,
+                                       amdgpu::fp_mode::ieee_minmax_num<false, true>(
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane))),
+                                           wf.cu().arch(), wf.fp_denorm_mode_f16_f64()),
+                                       wf.fp16_ovfl()));
   }
   dpp_write_mask_scope_.restore();
 }
@@ -1405,13 +1407,13 @@ void VMaxNumF16Vop2::execute_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<2, true, true, 3>(inst, wf, [&](auto a, auto b) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a, auto b) {
           if (wf.fp16_ovfl())
-            return ([](auto a, auto b) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::stdx::fmax(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+            return ([&wf](auto a, auto b) {
+              return util::f32_to_f16_ovfl_simd(amdgpu::ieee_minmax_num_simd<true, true>(
+                  util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
             })(a, b);
-          return ([](auto a, auto b) {
-            return util::f32_to_f16_simd(
-                util::stdx::fmax(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+          return ([&wf](auto a, auto b) {
+            return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<true, true>(
+                util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
           })(a, b);
         })(std::bit_cast<util::native<uint32_t>>(a), std::bit_cast<util::native<uint32_t>>(b)));
       }))
@@ -1422,13 +1424,14 @@ void VMaxNumF16Vop2::execute_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            std::fmax(util::f16_to_f32(
-                          static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                      util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane)))),
-            wf.fp16_ovfl()));
+        amdgpu::sdwa::round_f16_result(*this, wf,
+                                       amdgpu::fp_mode::ieee_minmax_num<true, true>(
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane))),
+                                           wf.cu().arch(), wf.fp_denorm_mode_f16_f64()),
+                                       wf.fp16_ovfl()));
   }
 }
 
@@ -1456,13 +1459,13 @@ RJ_NOINLINE void VMaxNumF16Vop2::execute_modifier_impl(amdgpu::Wavefront &wf) {
   if (amdgpu::try_execute_words_simd<2, true, true, 3>(inst, wf, [&](auto a, auto b) {
         return std::bit_cast<util::native<uint32_t>>(([&](auto a, auto b) {
           if (wf.fp16_ovfl())
-            return ([](auto a, auto b) {
-              return util::f32_to_f16_ovfl_simd(
-                  util::stdx::fmax(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+            return ([&wf](auto a, auto b) {
+              return util::f32_to_f16_ovfl_simd(amdgpu::ieee_minmax_num_simd<true, true>(
+                  util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
             })(a, b);
-          return ([](auto a, auto b) {
-            return util::f32_to_f16_simd(
-                util::stdx::fmax(util::f16_to_f32_simd(a), util::f16_to_f32_simd(b)));
+          return ([&wf](auto a, auto b) {
+            return util::f32_to_f16_simd(amdgpu::ieee_minmax_num_simd<true, true>(
+                util::f16_to_f32_simd(a), util::f16_to_f32_simd(b), wf));
           })(a, b);
         })(std::bit_cast<util::native<uint32_t>>(a), std::bit_cast<util::native<uint32_t>>(b)));
       }))
@@ -1473,13 +1476,14 @@ RJ_NOINLINE void VMaxNumF16Vop2::execute_modifier_impl(amdgpu::Wavefront &wf) {
       continue;
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F16>(
         *this, wf, vdst, lane,
-        amdgpu::sdwa::round_f16_result(
-            *this, wf,
-            std::fmax(util::f16_to_f32(
-                          static_cast<uint16_t>(amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
-                      util::f16_to_f32(static_cast<uint16_t>(
-                          amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane)))),
-            wf.fp16_ovfl()));
+        amdgpu::sdwa::round_f16_result(*this, wf,
+                                       amdgpu::fp_mode::ieee_minmax_num<true, true>(
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(src0, lane))),
+                                           util::f16_to_f32(static_cast<uint16_t>(
+                                               amdgpu::RegisterAccess(wf).read_lane(vsrc1, lane))),
+                                           wf.cu().arch(), wf.fp_denorm_mode_f16_f64()),
+                                       wf.fp16_ovfl()));
   }
   dpp_write_mask_scope_.restore();
 }

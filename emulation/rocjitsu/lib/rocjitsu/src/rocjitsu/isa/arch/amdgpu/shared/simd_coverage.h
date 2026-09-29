@@ -395,6 +395,11 @@ template <bool Extended, typename Slot>
       }
       case 10:
       case 11: {
+        if (fp_mode::measured_minmax_rules(wf.cu().arch())) {
+          result = std::bit_cast<U>(slot.op == 10 ? ieee_minmax_num_simd<true>(af, bf, wf)
+                                                  : ieee_minmax_num_simd<false>(af, bf, wf));
+          break;
+        }
         F selected = bf;
         if (slot.op == 10)
           util::stdx::where(af > bf, selected) = af;

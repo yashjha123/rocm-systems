@@ -1964,13 +1964,23 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
         'ieee_maximum3': ('ieee_minmax3', 'true, true'),
         'ieee_maximumminimum': ('ieee_minmax3', 'true, false'),
         'ieee_minimummaximum': ('ieee_minmax3', 'false, true'),
+        'ieee_min_num': ('ieee_minmax_num', 'false'),
+        'ieee_max_num': ('ieee_minmax_num', 'true'),
+        'ieee_min3_num': ('ieee_minmax3_num', 'false, false'),
+        'ieee_max3_num': ('ieee_minmax3_num', 'true, true'),
+        'ieee_minmax_num': ('ieee_minmax3_num', 'false, true'),
+        'ieee_maxmin_num': ('ieee_minmax3_num', 'true, false'),
+        'ieee_med3_num': ('ieee_med3_num', ''),
     }
     if callee in ieee_minmax_calls:
         helper, selects = ieee_minmax_calls[callee]
-        half = ', true' if node.ty == SemaType.F16 else ''
+        template = [selects] if selects else []
+        if node.ty == SemaType.F16:
+            template.append('true')
         mode = 'f32' if node.ty == SemaType.F32 else 'f16_f64'
+        template_args = f'<{", ".join(template)}>' if template else ''
         return (
-            f'amdgpu::fp_mode::{helper}<{selects}{half}>({args_str}, '
+            f'amdgpu::fp_mode::{helper}{template_args}({args_str}, '
             f'wf.cu().arch(), wf.fp_denorm_mode_{mode}())'
         )
     if len(args) == 1 and callee == 'compare_input':

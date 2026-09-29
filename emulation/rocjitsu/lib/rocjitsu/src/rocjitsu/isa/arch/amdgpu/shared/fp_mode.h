@@ -306,14 +306,14 @@ inline double compare_input_f64(double value, uint32_t denorm_mode) {
   return value;
 }
 
-/// @brief Whether V_MINIMUM and V_MAXIMUM return their NaN operand and honor input flushing.
-/// @details Measured on gfx1201: a NaN result is the first NaN operand in source order,
-/// quieted, with its sign and payload; a quiet src0 wins over a signaling src1. With input
-/// denormals disabled an operand becomes zero of the same sign, and a denormal result is never
-/// flushed. Other profiles keep the canonical quiet NaN and compare unflushed operands.
-inline bool minmax_keeps_nan_operand(rj_code_arch_t arch) {
-  return arch == ROCJITSU_CODE_ARCH_RDNA4;
-}
+/// @brief Whether the IEEE 754-2019 min/max families follow the measured gfx1201 rules.
+/// @details With input denormals disabled an operand becomes zero of the same sign, a denormal
+/// result is never flushed, and -0 orders below +0. V_MINIMUM and V_MAXIMUM return the first
+/// NaN operand in source order, quieted, with its sign and payload; a quiet src0 wins over a
+/// signaling src1. The *_NUM forms ignore a single NaN operand, signaling or quiet, and return
+/// the quieted src0 when both are NaN. Other profiles keep the canonical quiet NaN and host
+/// fmin/fmax on unflushed operands.
+inline bool measured_minmax_rules(rj_code_arch_t arch) { return arch == ROCJITSU_CODE_ARCH_RDNA4; }
 
 /// @brief Set the quiet bit of a NaN, keeping its sign and payload.
 template <typename T> inline T quiet_nan_operand(T value) {
@@ -322,37 +322,48 @@ template <typename T> inline T quiet_nan_operand(T value) {
   return std::bit_cast<T>(static_cast<Bits>(std::bit_cast<Bits>(value) | QUIET));
 }
 
-/// @brief Evaluate IEEE 754-2019 minimum or maximum of two VOP3 operands.
-/// @details `Half` marks F16 operands promoted exactly to F32; their NaN payload survives the
-/// round trip because promotion and narrowing both shift it by 13 bits. `denorm_mode` is the
-/// MODE.FP_DENORM field of the operand format.
-template <bool Maximum, bool Half = false, typename T>
-inline T ieee_minmax(T a, T b, rj_code_arch_t arch, uint32_t denorm_mode) {
-  if (!minmax_keeps_nan_operand(arch)) {
-    if (std::isnan(a) || std::isnan(b))
-      return std::numeric_limits<T>::quiet_NaN();
-  } else {
-    if constexpr (std::is_same_v<T, double>) {
-      a = compare_input_f64(a, denorm_mode);
-      b = compare_input_f64(b, denorm_mode);
-    } else if constexpr (Half) {
-      a = compare_input_f16(a, denorm_mode);
-      b = compare_input_f16(b, denorm_mode);
-    } else {
-      a = compare_input_f32(a, denorm_mode);
-      b = compare_input_f32(b, denorm_mode);
-    }
-    if (std::isnan(a))
-      return quiet_nan_operand(a);
-    if (std::isnan(b))
-      return quiet_nan_operand(b);
-  }
+namespace detail {
+
+/// @brief Flush a min/max operand under MODE.FP_DENORM; `Half` marks a promoted F16 operand.
+template <bool Half, typename T> inline T minmax_input(T value, uint32_t denorm_mode) {
+  if constexpr (std::is_same_v<T, double>)
+    return compare_input_f64(value, denorm_mode);
+  else if constexpr (Half)
+    return compare_input_f16(value, denorm_mode);
+  else
+    return compare_input_f32(value, denorm_mode);
+}
+
+/// @brief Select between two ordered operands with -0 below +0.
+template <bool Maximum, typename T> inline T ordered_select(T a, T b) {
   if (a == b)
     return std::signbit(a) == Maximum ? b : a;
   if constexpr (Maximum)
     return a > b ? a : b;
   else
     return a < b ? a : b;
+}
+
+} // namespace detail
+
+/// @brief Evaluate IEEE 754-2019 minimum or maximum of two VOP3 operands.
+/// @details `Half` marks F16 operands promoted exactly to F32; their NaN payload survives the
+/// round trip because promotion and narrowing both shift it by 13 bits. `denorm_mode` is the
+/// MODE.FP_DENORM field of the operand format.
+template <bool Maximum, bool Half = false, typename T>
+inline T ieee_minmax(T a, T b, rj_code_arch_t arch, uint32_t denorm_mode) {
+  if (!measured_minmax_rules(arch)) {
+    if (std::isnan(a) || std::isnan(b))
+      return std::numeric_limits<T>::quiet_NaN();
+  } else {
+    a = detail::minmax_input<Half>(a, denorm_mode);
+    b = detail::minmax_input<Half>(b, denorm_mode);
+    if (std::isnan(a))
+      return quiet_nan_operand(a);
+    if (std::isnan(b))
+      return quiet_nan_operand(b);
+  }
+  return detail::ordered_select<Maximum>(a, b);
 }
 
 /// @brief Evaluate the three-operand IEEE 754-2019 minimum/maximum forms.
@@ -362,6 +373,51 @@ template <bool FirstMaximum, bool SecondMaximum, bool Half = false, typename T>
 inline T ieee_minmax3(T a, T b, T c, rj_code_arch_t arch, uint32_t denorm_mode) {
   return ieee_minmax<SecondMaximum, Half>(ieee_minmax<FirstMaximum, Half>(a, b, arch, denorm_mode),
                                           c, arch, denorm_mode);
+}
+
+/// @brief Evaluate IEEE 754-2019 minimumNumber or maximumNumber (V_MIN_NUM, V_MAX_NUM).
+template <bool Maximum, bool Half = false, typename T>
+inline T ieee_minmax_num(T a, T b, rj_code_arch_t arch, uint32_t denorm_mode) {
+  if (!measured_minmax_rules(arch))
+    return Maximum ? std::fmax(a, b) : std::fmin(a, b);
+  a = detail::minmax_input<Half>(a, denorm_mode);
+  b = detail::minmax_input<Half>(b, denorm_mode);
+  if (std::isnan(a))
+    return std::isnan(b) ? quiet_nan_operand(a) : b;
+  if (std::isnan(b))
+    return a;
+  return detail::ordered_select<Maximum>(a, b);
+}
+
+/// @brief Evaluate V_MIN3_NUM, V_MAX3_NUM, V_MINMAX_NUM and V_MAXMIN_NUM.
+/// @details Each selects `Second(First(a, b), c)` under the binary *_NUM rules.
+template <bool FirstMaximum, bool SecondMaximum, bool Half = false, typename T>
+inline T ieee_minmax3_num(T a, T b, T c, rj_code_arch_t arch, uint32_t denorm_mode) {
+  return ieee_minmax_num<SecondMaximum, Half>(
+      ieee_minmax_num<FirstMaximum, Half>(a, b, arch, denorm_mode), c, arch, denorm_mode);
+}
+
+/// @brief Evaluate V_MED3_NUM.
+/// @details As in the ISA pseudocode, measured on gfx1201: any NaN operand selects
+/// V_MIN3_NUM; otherwise the operand that matches V_MAX3_NUM bit for bit is dropped and the
+/// maximum of the other two returned, which is the median under -0 < +0.
+template <bool Half = false, typename T>
+inline T ieee_med3_num(T a, T b, T c, rj_code_arch_t arch, uint32_t denorm_mode) {
+  if (!measured_minmax_rules(arch))
+    return std::fmax(std::fmin(std::fmax(a, b), c), std::fmin(a, b));
+  a = detail::minmax_input<Half>(a, denorm_mode);
+  b = detail::minmax_input<Half>(b, denorm_mode);
+  c = detail::minmax_input<Half>(c, denorm_mode);
+  if (std::isnan(a) || std::isnan(b) || std::isnan(c))
+    return ieee_minmax3_num<false, false, Half>(a, b, c, arch, denorm_mode);
+  using Bits = std::conditional_t<sizeof(T) == sizeof(uint64_t), uint64_t, uint32_t>;
+  const Bits largest =
+      std::bit_cast<Bits>(detail::ordered_select<true>(detail::ordered_select<true>(a, b), c));
+  if (largest == std::bit_cast<Bits>(a))
+    return detail::ordered_select<true>(b, c);
+  if (largest == std::bit_cast<Bits>(b))
+    return detail::ordered_select<true>(a, c);
+  return detail::ordered_select<true>(a, b);
 }
 
 /// @brief Apply the result-format rules required by an active OMOD.

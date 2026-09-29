@@ -704,30 +704,34 @@ template <typename Batch> inline Batch compare_input_f64_simd(Batch value, const
   return value;
 }
 
+/// Flush SIMD min/max operands under MODE.FP_DENORM; `Half` marks F16 lanes widened to F32.
+template <bool Half, typename V> inline V minmax_input_simd(V value, const Wavefront &wf) {
+  if constexpr (std::is_same_v<typename V::value_type, double>)
+    return compare_input_f64_simd(value, wf);
+  else if constexpr (Half)
+    return compare_input_f16_simd(value, wf);
+  else
+    return compare_input_f32_simd(value, wf);
+}
+
+/// Ordered SIMD selection with -0 below +0; NaN lanes are left to the caller.
+template <bool Maximum, typename V> inline V ordered_select_simd(V a, V b) {
+  if constexpr (Maximum)
+    return util::ieee_maximum_simd(a, b);
+  else
+    return util::ieee_minimum_simd(a, b);
+}
+
 /// SIMD counterpart of fp_mode::ieee_minmax for F32 and F64 lanes, and for F16 lanes widened
 /// to F32 when `Half` is set. NaN results are rare, so their operand selection is repaired per
 /// lane after the vector select.
 template <bool Maximum, bool Half = false, typename V>
 inline V ieee_minmax_simd(V a, V b, const Wavefront &wf) {
-  const auto select = [](V lhs, V rhs) {
-    if constexpr (Maximum)
-      return util::ieee_maximum_simd(lhs, rhs);
-    else
-      return util::ieee_minimum_simd(lhs, rhs);
-  };
-  if (!fp_mode::minmax_keeps_nan_operand(wf.cu().arch()))
-    return select(a, b);
-  if constexpr (std::is_same_v<typename V::value_type, double>) {
-    a = compare_input_f64_simd(a, wf);
-    b = compare_input_f64_simd(b, wf);
-  } else if constexpr (Half) {
-    a = compare_input_f16_simd(a, wf);
-    b = compare_input_f16_simd(b, wf);
-  } else {
-    a = compare_input_f32_simd(a, wf);
-    b = compare_input_f32_simd(b, wf);
-  }
-  V result = select(a, b);
+  if (!fp_mode::measured_minmax_rules(wf.cu().arch()))
+    return ordered_select_simd<Maximum>(a, b);
+  a = minmax_input_simd<Half>(a, wf);
+  b = minmax_input_simd<Half>(b, wf);
+  V result = ordered_select_simd<Maximum>(a, b);
   const auto nan = util::stdx::isnan(result);
   if (util::stdx::any_of(nan))
     for (std::size_t i = 0; i < result.size(); ++i)
@@ -736,6 +740,48 @@ inline V ieee_minmax_simd(V a, V b, const Wavefront &wf) {
         const typename V::value_type rhs = b[i];
         result[i] = fp_mode::quiet_nan_operand(std::isnan(lhs) ? lhs : rhs);
       }
+  return result;
+}
+
+/// SIMD counterpart of fp_mode::ieee_minmax_num; NaN lanes are repaired per lane.
+template <bool Maximum, bool Half = false, typename V>
+inline V ieee_minmax_num_simd(V a, V b, const Wavefront &wf) {
+  const rj_code_arch_t arch = wf.cu().arch();
+  if (!fp_mode::measured_minmax_rules(arch))
+    return Maximum ? util::stdx::fmax(a, b) : util::stdx::fmin(a, b);
+  a = minmax_input_simd<Half>(a, wf);
+  b = minmax_input_simd<Half>(b, wf);
+  V result = ordered_select_simd<Maximum>(a, b);
+  const auto nan = util::stdx::isnan(a) || util::stdx::isnan(b);
+  if (util::stdx::any_of(nan))
+    for (std::size_t i = 0; i < result.size(); ++i)
+      if (nan[i])
+        result[i] = fp_mode::ieee_minmax_num<Maximum, Half>(
+            static_cast<typename V::value_type>(a[i]), static_cast<typename V::value_type>(b[i]),
+            arch, 3u);
+  return result;
+}
+
+/// SIMD counterpart of fp_mode::ieee_med3_num. Without NaN operands the ISA selection is the
+/// median under -0 < +0; NaN lanes are repaired per lane.
+template <bool Half = false, typename V>
+inline V ieee_med3_num_simd(V a, V b, V c, const Wavefront &wf) {
+  const rj_code_arch_t arch = wf.cu().arch();
+  if (!fp_mode::measured_minmax_rules(arch))
+    return util::stdx::fmax(util::stdx::fmin(util::stdx::fmax(a, b), c), util::stdx::fmin(a, b));
+  a = minmax_input_simd<Half>(a, wf);
+  b = minmax_input_simd<Half>(b, wf);
+  c = minmax_input_simd<Half>(c, wf);
+  V result =
+      ordered_select_simd<true>(ordered_select_simd<false>(ordered_select_simd<true>(a, b), c),
+                                ordered_select_simd<false>(a, b));
+  const auto nan = util::stdx::isnan(a) || util::stdx::isnan(b) || util::stdx::isnan(c);
+  if (util::stdx::any_of(nan))
+    for (std::size_t i = 0; i < result.size(); ++i)
+      if (nan[i])
+        result[i] = fp_mode::ieee_med3_num<Half>(
+            static_cast<typename V::value_type>(a[i]), static_cast<typename V::value_type>(b[i]),
+            static_cast<typename V::value_type>(c[i]), arch, 3u);
   return result;
 }
 
