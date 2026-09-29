@@ -7,6 +7,7 @@
 /// Integer SIN/COS reduction and staged approximation from RDNA3/4 captures.
 
 #include "util/big_int.h"
+#include "util/data_types.h"
 
 #include <algorithm>
 #include <bit>
@@ -221,6 +222,21 @@ namespace util {
 inline float amdgpu_trig_f32(float value, bool cosine, uint32_t denorm_mode, bool quiet_snan) {
   return std::bit_cast<float>(
       detail::trig::evaluate(std::bit_cast<uint32_t>(value), cosine, denorm_mode, quiet_snan));
+}
+
+/// @brief SIN/COS of an exactly promoted F16 source, rounded to half.
+/// @details Denormal mode bit 0 preserves half input subnormals and bit 1 output subnormals;
+/// flushing retains the sign. The promoted input uses the F32 mapping with its intermediate
+/// denormals preserved, and the result rounds to nearest-even half regardless of guest rounding.
+/// The returned F32 value is exactly the half result to which callers apply output modifiers.
+inline float amdgpu_trig_f16(float value, bool cosine, uint32_t denorm_mode, bool quiet_snan) {
+  uint32_t bits = std::bit_cast<uint32_t>(value);
+  if ((denorm_mode & 1u) == 0 && (bits & 0x7fffffffu) < 0x38800000u)
+    bits &= 0x80000000u;
+  uint16_t result = f32_to_f16(amdgpu_trig_f32(std::bit_cast<float>(bits), cosine, 3, quiet_snan));
+  if ((denorm_mode & 2u) == 0 && (result & 0x7c00u) == 0)
+    result &= 0x8000u;
+  return f16_to_f32(result);
 }
 
 } // namespace util
