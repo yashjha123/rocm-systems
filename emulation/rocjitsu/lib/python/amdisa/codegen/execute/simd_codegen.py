@@ -1440,14 +1440,29 @@ _VOPC_FLOAT_RELS = [
 _VOPC_INT_RELS = ['eq', 'ge', 'gt', 'le', 'lt', 'ne', 'f', 't']
 
 
-def _vopc_functor(conv: str, rel: str) -> str:
+# Relational floating compares treat subnormal operands as signed zero when
+# MODE disables input denormals. Orderedness tests and constants are unaffected.
+# Keyed by suffix; {x} is the widened operand (F16 is already promoted to F32).
+_VOPC_FLOAT_INPUT: dict[str, str] = {
+    'f16': 'amdgpu::compare_input_f16_simd({x}, wf)',
+    'f32': 'amdgpu::compare_input_f32_simd({x}, wf)',
+    'f64': 'amdgpu::compare_input_f64_simd({x}, wf)',
+}
+
+
+def _vopc_functor(conv: str, rel: str, float_input: str | None = None) -> str:
+    if float_input is not None and rel not in _VOPC_CONST and rel not in ('o', 'u'):
+        conv = float_input.format(x=conv)
+        capture = '&wf'
+    else:
+        capture = ''
     ca = conv.format(x='a')
     cb = conv.format(x='b')
     if rel in _VOPC_CONST:
         body = f'decltype({ca} == {cb})({_VOPC_CONST[rel]})'
     else:
         body = _VOPC_REL[rel].format(a=ca, b=cb)
-    return f'[](auto a, auto b) {{ return {body}; }}'
+    return f'[{capture}](auto a, auto b) {{ return {body}; }}'
 
 
 def _build_simd_vopc() -> dict[str, tuple[str, str]]:
@@ -1456,7 +1471,10 @@ def _build_simd_vopc() -> dict[str, tuple[str, str]]:
     for suf in ('f16', 'f32'):
         lane_t, conv = _VOPC_SUFFIX[suf]
         for rel in _VOPC_FLOAT_RELS:
-            table[f'v_cmp_{rel}_{suf}_vopc'] = (lane_t, _vopc_functor(conv, rel))
+            table[f'v_cmp_{rel}_{suf}_vopc'] = (
+                lane_t,
+                _vopc_functor(conv, rel, _VOPC_FLOAT_INPUT[suf]),
+            )
     for suf in ('i16', 'u16', 'i32', 'u32'):
         lane_t, conv = _VOPC_SUFFIX[suf]
         for rel in _VOPC_INT_RELS:
@@ -1469,7 +1487,10 @@ def _build_simd_vopc64() -> dict[str, tuple[str, str]]:
     table: dict[str, tuple[str, str]] = {}
     lane_t, conv = _VOPC_SUFFIX['f64']
     for rel in _VOPC_FLOAT_RELS:
-        table[f'v_cmp_{rel}_f64_vopc'] = (lane_t, _vopc_functor(conv, rel))
+        table[f'v_cmp_{rel}_f64_vopc'] = (
+            lane_t,
+            _vopc_functor(conv, rel, _VOPC_FLOAT_INPUT['f64']),
+        )
     for suf in ('i64', 'u64'):
         lane_t, conv = _VOPC_SUFFIX[suf]
         for rel in _VOPC_INT_RELS:
@@ -1682,7 +1703,9 @@ def _build_simd_vopc_vop3_f32() -> dict[str, str]:
     table: dict[str, str] = {}
     _, conv = _VOPC_SUFFIX['f32']
     for rel in _VOP3_FLOAT_RELS:
-        table[f'v_cmp_{rel}_f32_vop3'] = _vopc_functor(conv, rel)
+        table[f'v_cmp_{rel}_f32_vop3'] = _vopc_functor(
+            conv, rel, _VOPC_FLOAT_INPUT['f32']
+        )
     return table
 
 
@@ -1700,7 +1723,9 @@ def _build_simd_vopc_vop3_f16() -> dict[str, str]:
     table: dict[str, str] = {}
     _, conv = _VOPC_SUFFIX['f32']
     for rel in _VOP3_FLOAT_RELS:
-        table[f'v_cmp_{rel}_f16_vop3'] = _vopc_functor(conv, rel)
+        table[f'v_cmp_{rel}_f16_vop3'] = _vopc_functor(
+            conv, rel, _VOPC_FLOAT_INPUT['f16']
+        )
     return table
 
 
@@ -1717,7 +1742,9 @@ def _build_simd_vopc_vop3_f64() -> dict[str, str]:
     table: dict[str, str] = {}
     _, conv = _VOPC_SUFFIX['f64']
     for rel in _VOP3_FLOAT_RELS:
-        table[f'v_cmp_{rel}_f64_vop3'] = _vopc_functor(conv, rel)
+        table[f'v_cmp_{rel}_f64_vop3'] = _vopc_functor(
+            conv, rel, _VOPC_FLOAT_INPUT['f64']
+        )
     return table
 
 

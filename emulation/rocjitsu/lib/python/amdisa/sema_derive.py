@@ -1379,14 +1379,27 @@ class _VectorTernary(_ScalarDeriver):
         return SemaBlock(sem.name, ExecModel.VECTOR, body)
 
 
+def _compare_input(node: SemaNode, op: str) -> SemaNode:
+    """Apply MODE input-denormal handling to a relational floating compare operand."""
+    if node.ty is None or node.ty.base != 'F' or op in ('f', 't', 'o', 'u'):
+        return node
+    return SemaNode(
+        SemaNodeKind.CALL,
+        ty=node.ty,
+        call_name='compare_input',
+        children=(_id('compare_input'), node),
+    )
+
+
 @_register('vector_cmp')
 class _VectorCmp(_ScalarDeriver):
     @staticmethod
     def derive(sem: InstructionSemantics) -> SemaBlock:
         ty = _dtype_to_sema(sem.data_type)
-        src0 = _cast(_src(0), ty)
-        src1 = _cast(_src(1), ty)
-        cmp = _make_cmp(sem.operation or "", src0, src1)
+        op = sem.operation or ""
+        src0 = _compare_input(_cast(_src(0), ty), op)
+        src1 = _compare_input(_cast(_src(1), ty), op)
+        cmp = _make_cmp(op, src0, src1)
         body = _assign(
             SemaNode(
                 SemaNodeKind.ARRAYDEREF,

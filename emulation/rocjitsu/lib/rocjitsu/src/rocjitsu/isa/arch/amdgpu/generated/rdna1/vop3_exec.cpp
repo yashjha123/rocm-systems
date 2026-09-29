@@ -1168,6 +1168,8 @@ void VCmpxLtF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 < s1)
       result |= (1ULL << lane);
   }
@@ -1194,6 +1196,8 @@ void VCmpxEqF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 == s1)
       result |= (1ULL << lane);
   }
@@ -1220,6 +1224,8 @@ void VCmpxLeF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 <= s1)
       result |= (1ULL << lane);
   }
@@ -1246,6 +1252,8 @@ void VCmpxGtF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 > s1)
       result |= (1ULL << lane);
   }
@@ -1272,6 +1280,8 @@ void VCmpxLgF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 < s1 || s0 > s1)
       result |= (1ULL << lane);
   }
@@ -1298,6 +1308,8 @@ void VCmpxGeF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 >= s1)
       result |= (1ULL << lane);
   }
@@ -1376,6 +1388,8 @@ void VCmpxNgeF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (!(s0 >= s1))
       result |= (1ULL << lane);
   }
@@ -1402,6 +1416,8 @@ void VCmpxNlgF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (!(s0 < s1 || s0 > s1))
       result |= (1ULL << lane);
   }
@@ -1428,6 +1444,8 @@ void VCmpxNgtF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (!(s0 > s1))
       result |= (1ULL << lane);
   }
@@ -1454,6 +1472,8 @@ void VCmpxNleF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (!(s0 <= s1))
       result |= (1ULL << lane);
   }
@@ -1480,6 +1500,8 @@ void VCmpxNeqF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (s0 != s1 || std::isnan(s0) || std::isnan(s1))
       result |= (1ULL << lane);
   }
@@ -1506,6 +1528,8 @@ void VCmpxNltF32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f32(s0, wf.fp_denorm_mode_f32());
+    s1 = amdgpu::fp_mode::compare_input_f32(s1, wf.fp_denorm_mode_f32());
     if (!(s0 < s1))
       result |= (1ULL << lane);
   }
@@ -1690,6 +1714,8 @@ void VCmpxLtF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 < s1)
       result |= (1ULL << lane);
   }
@@ -1716,6 +1742,8 @@ void VCmpxEqF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 == s1)
       result |= (1ULL << lane);
   }
@@ -1742,6 +1770,8 @@ void VCmpxLeF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 <= s1)
       result |= (1ULL << lane);
   }
@@ -1768,6 +1798,8 @@ void VCmpxGtF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 > s1)
       result |= (1ULL << lane);
   }
@@ -1794,6 +1826,8 @@ void VCmpxLgF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 < s1 || s0 > s1)
       result |= (1ULL << lane);
   }
@@ -1820,6 +1854,8 @@ void VCmpxGeF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 >= s1)
       result |= (1ULL << lane);
   }
@@ -1898,6 +1934,8 @@ void VCmpxNgeF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 >= s1))
       result |= (1ULL << lane);
   }
@@ -1924,6 +1962,8 @@ void VCmpxNlgF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 < s1 || s0 > s1))
       result |= (1ULL << lane);
   }
@@ -1950,6 +1990,8 @@ void VCmpxNgtF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 > s1))
       result |= (1ULL << lane);
   }
@@ -1976,6 +2018,8 @@ void VCmpxNleF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 <= s1))
       result |= (1ULL << lane);
   }
@@ -2002,6 +2046,8 @@ void VCmpxNeqF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 != s1 || std::isnan(s0) || std::isnan(s1))
       result |= (1ULL << lane);
   }
@@ -2028,6 +2074,8 @@ void VCmpxNltF64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f64(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f64(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 < s1))
       result |= (1ULL << lane);
   }
@@ -3322,6 +3370,8 @@ void VCmpxLtF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 < s1)
       result |= (1ULL << lane);
   }
@@ -3351,6 +3401,8 @@ void VCmpxEqF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 == s1)
       result |= (1ULL << lane);
   }
@@ -3380,6 +3432,8 @@ void VCmpxLeF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 <= s1)
       result |= (1ULL << lane);
   }
@@ -3409,6 +3463,8 @@ void VCmpxGtF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 > s1)
       result |= (1ULL << lane);
   }
@@ -3438,6 +3494,8 @@ void VCmpxLgF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 < s1 || s0 > s1)
       result |= (1ULL << lane);
   }
@@ -3467,6 +3525,8 @@ void VCmpxGeF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 >= s1)
       result |= (1ULL << lane);
   }
@@ -3820,6 +3880,8 @@ void VCmpxNgeF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 >= s1))
       result |= (1ULL << lane);
   }
@@ -3849,6 +3911,8 @@ void VCmpxNlgF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 < s1 || s0 > s1))
       result |= (1ULL << lane);
   }
@@ -3878,6 +3942,8 @@ void VCmpxNgtF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 > s1))
       result |= (1ULL << lane);
   }
@@ -3907,6 +3973,8 @@ void VCmpxNleF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 <= s1))
       result |= (1ULL << lane);
   }
@@ -3936,6 +4004,8 @@ void VCmpxNeqF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (s0 != s1 || std::isnan(s0) || std::isnan(s1))
       result |= (1ULL << lane);
   }
@@ -3965,6 +4035,8 @@ void VCmpxNltF16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       s1 = std::fabs(s1);
     if (inst_.neg & (1u << 1))
       s1 = -s1;
+    s0 = amdgpu::fp_mode::compare_input_f16(s0, wf.fp_denorm_mode_f16_f64());
+    s1 = amdgpu::fp_mode::compare_input_f16(s1, wf.fp_denorm_mode_f16_f64());
     if (!(s0 < s1))
       result |= (1ULL << lane);
   }

@@ -281,6 +281,31 @@ inline uint32_t effective_f16_omod(rj_code_arch_t arch, uint32_t denorm_mode, bo
   return effective_omod(arch, denorm_mode, ieee_mode, omod);
 }
 
+/// @brief Prepare an F32 floating compare operand under MODE.FP_DENORM.
+/// @details With input denormals disabled, compares treat a subnormal as zero of the same
+/// sign, as measured on gfx1201. Class tests inspect the raw encoding and do not use this.
+inline float compare_input_f32(float value, uint32_t denorm_mode) {
+  const uint32_t bits = std::bit_cast<uint32_t>(value);
+  if ((denorm_mode & 1u) == 0 && (bits & 0x7f800000u) == 0)
+    return std::bit_cast<float>(bits & 0x80000000u);
+  return value;
+}
+
+/// @brief Prepare an exactly promoted F16 compare operand under the F16 denormal mode.
+inline float compare_input_f16(float value, uint32_t denorm_mode) {
+  const uint32_t bits = std::bit_cast<uint32_t>(value);
+  if ((denorm_mode & 1u) == 0 && (bits & 0x7fffffffu) < 0x38800000u)
+    return std::bit_cast<float>(bits & 0x80000000u);
+  return value;
+}
+
+/// @brief Prepare an F64 compare operand under the F16/F64 denormal mode.
+inline double compare_input_f64(double value, uint32_t denorm_mode) {
+  if ((denorm_mode & 1u) == 0)
+    return std::bit_cast<double>(detail::flush_f64(std::bit_cast<uint64_t>(value)));
+  return value;
+}
+
 /// @brief Apply the result-format rules required by an active OMOD.
 /// @details OMOD always flushes an output subnormal and maps either signed zero
 /// to positive zero. These helpers operate after the result has been rounded to

@@ -680,6 +680,30 @@ inline uint32_t effective_vop3_omod_f64(const Wavefront &wf, uint32_t omod) {
   return fp_mode::effective_omod(wf.cu().arch(), wf.fp_denorm_mode_f16_f64(), wf.ieee_mode(), omod);
 }
 
+/// Vector ports of `fp_mode::compare_input_*`: floating compares treat
+/// subnormal operands as signed zero when MODE disables input denormals.
+inline util::native<float> compare_input_f32_simd(util::native<float> value, const Wavefront &wf) {
+  return (wf.fp_denorm_mode_f32() & 1u) ? value : util::flush_denorm_f32_simd(value);
+}
+
+inline util::native<float> compare_input_f16_simd(util::native<float> value, const Wavefront &wf) {
+  if (wf.fp_denorm_mode_f16_f64() & 1u)
+    return value;
+  using U = util::native<uint32_t>;
+  U bits = std::bit_cast<U>(value);
+  util::stdx::where((bits & U(0x7fffffffu)) < U(0x38800000u), bits) = bits & U(0x80000000u);
+  return std::bit_cast<util::native<float>>(bits);
+}
+
+/// F64 lanes arrive in native or fixed-size batches, depending on the 64-bit mask support.
+template <typename Batch> inline Batch compare_input_f64_simd(Batch value, const Wavefront &wf) {
+  if (wf.fp_denorm_mode_f16_f64() & 1u)
+    return value;
+  for (std::size_t i = 0; i < value.size(); ++i)
+    value[i] = fp_mode::compare_input_f64(value[i], 0);
+  return value;
+}
+
 inline util::native<uint32_t> finalize_omod_f16_bits_simd(util::native<uint32_t> value,
                                                           uint32_t omod) {
   if (omod == 0)

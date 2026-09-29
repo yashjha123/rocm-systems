@@ -228,6 +228,15 @@ def _cmp_condition(
         if is_vop3:
             L.extend(vop3_src_mod('s0', 0, has_abs))
             L.extend(vop3_src_mod('s1', 1, has_abs))
+        if op not in ('o', 'u'):
+            # Relational compares treat subnormals as signed zero when MODE
+            # disables input denormals; orderedness tests are unaffected.
+            mode = 'f32' if dtype == 'f32' else 'f16_f64'
+            for name in ('s0', 's1'):
+                L.append(
+                    f'    {name} = amdgpu::fp_mode::compare_input_{dtype}('
+                    f'{name}, wf.fp_denorm_mode_{mode}());'
+                )
         # Ordered comparisons (false if NaN)
         ordered_map = {
             'eq': 's0 == s1',

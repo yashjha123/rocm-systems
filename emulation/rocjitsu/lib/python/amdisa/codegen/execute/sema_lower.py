@@ -1957,6 +1957,15 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             return f'static_cast<uint32_t>(util::f32_to_f16_mode({fp8_decode_fn}(static_cast<uint8_t>({arg})), wf.fp16_ovfl()))'
         return f'static_cast<uint32_t>(util::f32_to_f16_mode({bf8_decode_fn}(static_cast<uint8_t>({arg})), wf.fp16_ovfl()))'
 
+    if len(args) == 1 and callee == 'compare_input':
+        precision = {SemaType.F16: 'f16', SemaType.F32: 'f32', SemaType.F64: 'f64'}[
+            node.ty
+        ]
+        mode = 'f32' if precision == 'f32' else 'f16_f64'
+        return (
+            f'amdgpu::fp_mode::compare_input_{precision}({args[0]}, '
+            f'wf.fp_denorm_mode_{mode}())'
+        )
     # Promotion loses the F16 denormal class, so SQRT/RSQ need the half input policy.
     if len(args) == 1 and callee == 'sqrt' and node.ty in (SemaType.F16, SemaType.F32):
         half_policy = 'wf.fp_denorm_mode_f16_f64(), ' if node.ty == SemaType.F16 else ''
