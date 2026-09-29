@@ -614,4 +614,87 @@ inline uint8_t encode_fp8(uint32_t bits, Format f, int source_index, const Modif
   return evaluate_fp8(bits, f, source_index, mods, m, stochastic, random).bits;
 }
 
+/// @brief V_CVT_PK_FP8_F32 / V_CVT_PK_BF8_F32: two sources rounded to nearest even into a
+/// 16-bit word; the facts of both bytes are combined.
+inline Evaluation<uint32_t> evaluate_pack_fp8(uint32_t lo, uint32_t hi, Format f,
+                                              const Modifiers &mods, const Mode &m) {
+  const Evaluation<uint8_t> low = evaluate_fp8(lo, f, 0, mods, m, false, 0);
+  const Evaluation<uint8_t> high = evaluate_fp8(hi, f, 1, mods, m, false, 0);
+  return {static_cast<uint32_t>(low.bits) | (static_cast<uint32_t>(high.bits) << 8),
+          low.facts | high.facts};
+}
+
+/// TRAPSTS.EXCP cause bits produced by conversion_causes().
+namespace conversion_cause {
+inline constexpr uint32_t kInvalid = 1u << 0;
+inline constexpr uint32_t kInputDenormal = 1u << 1;
+inline constexpr uint32_t kOverflow = 1u << 3;
+inline constexpr uint32_t kUnderflow = 1u << 4;
+inline constexpr uint32_t kInexact = 1u << 5;
+} // namespace conversion_cause
+
+/// @brief How a conversion form maps its facts to exception causes.
+/// @details Measured on a physical gfx1201 by reading EXCP_FLAG_USER around single
+/// instructions (95,073 captures over every MODE rounding, denormal and FP16_OVFL setting).
+/// Forms without a rule have no measured status and report no causes.
+enum class CauseRule : uint8_t {
+  /// F16/F32/F64 to F16/F32/F64. INVALID only for a signaling NaN; INPUT_DENORMAL for a
+  /// subnormal source that MODE keeps; OVERFLOW and INEXACT when the value rounded with an
+  /// unbounded exponent exceeds the largest finite value, even when FP16_OVFL saturates it;
+  /// UNDERFLOW and INEXACT when the result is tiny after rounding and inexact, which includes
+  /// output flushing; otherwise INEXACT when rounding is inexact. OMOD suppresses UNDERFLOW and
+  /// INEXACT and reports its own overflow as OVERFLOW alone. CLAMP suppresses every cause.
+  FLOAT,
+  /// V_CVT_F{16,32}_{I,U}{16,32}: as FLOAT, with no NaN, subnormal or tiny sources.
+  INTEGER_TO_FLOAT,
+  /// Truncating V_CVT_{I,U}{16,32}_F{16,32,64}. INVALID alone for a NaN, an infinity or a value
+  /// outside the destination range before truncation; otherwise INPUT_DENORMAL for a kept
+  /// subnormal source. Truncation is silent unless CLAMP is set, which reports INEXACT.
+  FLOAT_TO_INTEGER,
+  /// V_CVT_{PK,SR}_{FP8,BF8}_F32: INVALID for a signaling NaN and INPUT_DENORMAL for a kept
+  /// subnormal source. Overflow, saturation and rounding are silent.
+  FP8,
+  /// Forms measured never to raise a cause, even for signaling NaNs or out-of-range values.
+  SILENT,
+};
+
+/// @brief Exception causes of one converted lane under a measured rule.
+inline uint32_t conversion_causes(CauseRule rule, uint32_t facts, const Modifiers &mods) {
+  namespace fact = conversion_fact;
+  namespace cause = conversion_cause;
+  const bool denormal = (facts & fact::kInputDenormal) && !(facts & fact::kInputFlushed);
+  switch (rule) {
+  case CauseRule::FLOAT:
+  case CauseRule::INTEGER_TO_FLOAT: {
+    if (mods.clamp)
+      return 0;
+    uint32_t causes = (facts & fact::kSignalingNan ? cause::kInvalid : 0u) |
+                      (denormal ? cause::kInputDenormal : 0u);
+    if (facts & fact::kOverflow)
+      causes |= cause::kOverflow | cause::kInexact;
+    else if ((facts & fact::kTinyAfterRounding) && (facts & fact::kInexact))
+      causes |= cause::kUnderflow | cause::kInexact;
+    else if (facts & fact::kInexact)
+      causes |= cause::kInexact;
+    if (mods.omod) {
+      causes &= ~(cause::kUnderflow | cause::kInexact);
+      if (facts & fact::kOmodOverflow)
+        causes |= cause::kOverflow;
+    }
+    return causes;
+  }
+  case CauseRule::FLOAT_TO_INTEGER:
+    if (facts & (fact::kNan | fact::kInfinite | fact::kOutOfRange))
+      return cause::kInvalid;
+    return (denormal ? cause::kInputDenormal : 0u) |
+           (mods.clamp && (facts & fact::kInexact) ? cause::kInexact : 0u);
+  case CauseRule::FP8:
+    return (facts & fact::kSignalingNan ? cause::kInvalid : 0u) |
+           (denormal ? cause::kInputDenormal : 0u);
+  case CauseRule::SILENT:
+    return 0;
+  }
+  return 0;
+}
+
 } // namespace rocjitsu::amdgpu::conversion

@@ -6406,8 +6406,9 @@ def test_generated_rdna4_vop3_cvt_f32_f16_applies_true16_source_modifiers(
     assert 'read_vop3_true16_src(src0, wf, lane, opsel, 0)' in body
     assert 'static_cast<uint32_t>(inst_.abs)' in body
     assert 'static_cast<uint32_t>(inst_.neg)' in body
-    assert 'amdgpu::conversion::convert_float(' in body
-    assert 'amdgpu::conversion::F16, amdgpu::conversion::F32' in body
+    assert 'amdgpu::conversion::evaluate_float(' in body
+    assert 'evaluate_float(s0, amdgpu::conversion::F16,' in body
+    assert 'amdgpu::conversion::F32, mods, mode)' in body
     assert 'wf.fp_denorm_mode_f16_f64()' in body
 
 
@@ -8732,3 +8733,17 @@ def test_other_integer_transcendentals_keep_unscoped_probe(
     assert body.index('try_execute_transcendental_f32_simd') < body.index(
         'uint64_t exec = dpp::execution_lane_mask'
     )
+
+
+def test_generated_rdna4_conversions_report_measured_causes_once(
+    rdna4_generated_root: Path,
+):
+    vop1 = (rdna4_generated_root / 'vop1_exec.cpp').read_text()
+    start = vop1.index('void VCvtF16F32Vop1::execute_impl')
+    body = vop1[start : vop1.index('VCvtF16F32Vop1::execute_modifier_impl', start)]
+    # The measured body is the only cause source: no classifier runs first.
+    assert body.count('wf.raise_alu_causes(causes);') == 1
+    assert 'classify_' not in body
+    assert 'CauseRule::FLOAT' in body
+    shared = (rdna4_generated_root.parent / 'shared' / 'execute_shared.h').read_text()
+    assert 'classify_cvt' not in shared

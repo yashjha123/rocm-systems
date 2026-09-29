@@ -966,6 +966,7 @@ void VCvtPkRtzF16F32Vop2::execute_impl(amdgpu::Wavefront &wf) {
       wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()};
   [[maybe_unused]] const amdgpu::conversion::Modifiers mods{};
   [[maybe_unused]] const uint32_t opsel = 0u;
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -1003,6 +1004,7 @@ RJ_NOINLINE void VCvtPkRtzF16F32Vop2::execute_modifier_impl(amdgpu::Wavefront &w
       wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl()};
   [[maybe_unused]] const amdgpu::conversion::Modifiers mods{};
   [[maybe_unused]] const uint32_t opsel = 0u;
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))

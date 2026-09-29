@@ -600,6 +600,7 @@ add_executable(
     buffer_descriptor_vcc_test.cpp
     buffer_format_test.cpp
     hwfloat_mul_f32_test.cpp
+    conversion_status_test.cpp
     hwfloat_mul_f32_execution_test.cpp
     image_resource_test.cpp
     smem_sbase_operand_test.cpp

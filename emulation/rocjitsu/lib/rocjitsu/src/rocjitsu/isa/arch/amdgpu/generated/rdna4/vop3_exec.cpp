@@ -77,13 +77,26 @@ void VCvtI32F64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint64_t s0 = amdgpu::RegisterAccess(wf).read_lane64(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F64, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        INT32_MIN, INT32_MAX, false));
+        INT32_MIN, INT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
 }
@@ -105,12 +118,25 @@ void VCvtF32I32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-        static_cast<int32_t>(s0), amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<int32_t>(s0), amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
 }
@@ -139,12 +165,25 @@ RJ_NOINLINE void VCvtF32I32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-        static_cast<int32_t>(s0), amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<int32_t>(s0), amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
   dpp_write_mask_scope_.restore();
@@ -163,12 +202,25 @@ void VCvtF32U32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-        static_cast<uint32_t>(s0), amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<uint32_t>(s0), amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
 }
@@ -197,12 +249,25 @@ RJ_NOINLINE void VCvtF32U32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-        static_cast<uint32_t>(s0), amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<uint32_t>(s0), amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
   dpp_write_mask_scope_.restore();
@@ -221,13 +286,26 @@ void VCvtU32F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F32, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        0, UINT32_MAX, false));
+        0, UINT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
 }
@@ -256,13 +334,26 @@ RJ_NOINLINE void VCvtU32F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F32, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        0, UINT32_MAX, false));
+        0, UINT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
   dpp_write_mask_scope_.restore();
@@ -281,13 +372,26 @@ void VCvtI32F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F32, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        INT32_MIN, INT32_MAX, false));
+        INT32_MIN, INT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
 }
@@ -316,13 +420,26 @@ RJ_NOINLINE void VCvtI32F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F32, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        INT32_MIN, INT32_MAX, false));
+        INT32_MIN, INT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
   dpp_write_mask_scope_.restore();
@@ -341,13 +458,25 @@ void VCvtF16F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_float(
-                                s0, amdgpu::conversion::F32, amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F32,
+                                                              amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
 }
@@ -376,13 +505,25 @@ RJ_NOINLINE void VCvtF16F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_float(
-                                s0, amdgpu::conversion::F32, amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F32,
+                                                              amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -401,13 +542,26 @@ void VCvtF32F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_float(
-        s0, amdgpu::conversion::F16, amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F16,
+                                                              amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
 }
@@ -438,13 +592,26 @@ RJ_NOINLINE void VCvtF32F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_float(
-        s0, amdgpu::conversion::F16, amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F16,
+                                                              amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
   dpp_write_mask_scope_.restore();
@@ -462,6 +629,7 @@ void VCvtNearestI32F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -497,6 +665,7 @@ RJ_NOINLINE void VCvtNearestI32F32Vop3::execute_modifier_impl(amdgpu::Wavefront 
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -522,6 +691,7 @@ void VCvtFloorI32F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -557,6 +727,7 @@ RJ_NOINLINE void VCvtFloorI32F32Vop3::execute_modifier_impl(amdgpu::Wavefront &w
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -607,12 +778,25 @@ void VCvtF32F64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint64_t s0 = amdgpu::RegisterAccess(wf).read_lane64(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_float(
-        s0, amdgpu::conversion::F64, amdgpu::conversion::F32, mods, mode));
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F64,
+                                                              amdgpu::conversion::F32, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::F32>(*this, wf, vdst, lane, result);
   }
 }
@@ -626,12 +810,25 @@ void VCvtF64F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
-    const uint64_t result = amdgpu::conversion::convert_float(s0, amdgpu::conversion::F32,
+    const auto evaluated = amdgpu::conversion::evaluate_float(s0, amdgpu::conversion::F32,
                                                               amdgpu::conversion::F64, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT,
+                                                    evaluated.facts, mods);
+    const uint64_t result = static_cast<uint64_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint64_t result = static_cast<uint64_t>(results[lane]);
     amdgpu::sdwa::write_lane64<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
 }
@@ -757,13 +954,26 @@ void VCvtU32F64Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint64_t s0 = amdgpu::RegisterAccess(wf).read_lane64(src0, lane);
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
         s0, amdgpu::conversion::F64, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
-        0, UINT32_MAX, false));
+        0, UINT32_MAX, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(*this, wf, vdst, lane, result);
   }
 }
@@ -1770,14 +1980,26 @@ void VCvtF16U16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-                                static_cast<uint16_t>(s0), amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<uint16_t>(s0), amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
 }
@@ -1808,14 +2030,26 @@ RJ_NOINLINE void VCvtF16U16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-                                static_cast<uint16_t>(s0), amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<uint16_t>(s0), amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -1834,14 +2068,26 @@ void VCvtF16I16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-                                static_cast<int16_t>(s0), amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<int16_t>(s0), amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
 }
@@ -1872,14 +2118,26 @@ RJ_NOINLINE void VCvtF16I16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_integer(
-                                static_cast<int16_t>(s0), amdgpu::conversion::F16, mods, mode)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_integer(
+        static_cast<int16_t>(s0), amdgpu::conversion::F16, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::INTEGER_TO_FLOAT,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -1898,15 +2156,27 @@ void VCvtU16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
-                                s0, amdgpu::conversion::F16, 0, mods, mode,
-                                amdgpu::conversion::IntegerRounding::TRUNCATE, 0, 65535, false)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
+        s0, amdgpu::conversion::F16, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
+        0, 65535, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
 }
@@ -1937,15 +2207,27 @@ RJ_NOINLINE void VCvtU16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result = static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
-                                s0, amdgpu::conversion::F16, 0, mods, mode,
-                                amdgpu::conversion::IntegerRounding::TRUNCATE, 0, 65535, false)) &
-                            0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
+        s0, amdgpu::conversion::F16, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
+        0, 65535, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -1964,16 +2246,27 @@ void VCvtI16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result =
-        static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
-            s0, amdgpu::conversion::F16, 0, mods, mode,
-            amdgpu::conversion::IntegerRounding::TRUNCATE, -32768, 32767, false)) &
-        0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
+        s0, amdgpu::conversion::F16, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
+        -32768, 32767, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
 }
@@ -2004,16 +2297,27 @@ RJ_NOINLINE void VCvtI16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 =
         ::rocjitsu::amdgpu::read_vop3_true16_src(src0, wf, lane, opsel, 0) & 0xffffu;
-    const uint32_t result =
-        static_cast<uint32_t>(amdgpu::conversion::convert_to_integer(
-            s0, amdgpu::conversion::F16, 0, mods, mode,
-            amdgpu::conversion::IntegerRounding::TRUNCATE, -32768, 32767, false)) &
-        0xffffu;
+    const auto evaluated = amdgpu::conversion::evaluate_to_integer(
+        s0, amdgpu::conversion::F16, 0, mods, mode, amdgpu::conversion::IntegerRounding::TRUNCATE,
+        -32768, 32767, false);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FLOAT_TO_INTEGER,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits) & 0xffffu;
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -3769,6 +4073,7 @@ void VSatPkU8I16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -3811,6 +4116,7 @@ RJ_NOINLINE void VSatPkU8I16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -3843,6 +4149,7 @@ void VCvtNormI16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -3881,6 +4188,7 @@ RJ_NOINLINE void VCvtNormI16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -3907,6 +4215,7 @@ void VCvtNormU16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -3945,6 +4254,7 @@ RJ_NOINLINE void VCvtNormU16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4123,6 +4433,7 @@ void VCvtF32Fp8Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4158,6 +4469,7 @@ RJ_NOINLINE void VCvtF32Fp8Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4183,6 +4495,7 @@ void VCvtF32Bf8Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4218,6 +4531,7 @@ RJ_NOINLINE void VCvtF32Bf8Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4239,6 +4553,7 @@ void VCvtPkF32Fp8Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -4263,6 +4578,7 @@ void VCvtPkF32Bf8Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -5063,6 +5379,7 @@ void VCvtPkRtzF16F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -5098,6 +5415,7 @@ RJ_NOINLINE void VCvtPkRtzF16F32Vop3::execute_modifier_impl(amdgpu::Wavefront &w
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Measured on gfx1201: this form raises no exception causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -7294,6 +7612,7 @@ void VCvtPkU8F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -7335,6 +7654,7 @@ RJ_NOINLINE void VCvtPkU8F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11341,6 +11661,7 @@ void VCvtPkI16F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11384,6 +11705,7 @@ RJ_NOINLINE void VCvtPkI16F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11417,6 +11739,7 @@ void VCvtPkU16F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11460,6 +11783,7 @@ RJ_NOINLINE void VCvtPkU16F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11909,6 +12233,7 @@ void VPackB32F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11948,6 +12273,7 @@ RJ_NOINLINE void VPackB32F16Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -11975,6 +12301,7 @@ void VCvtPkNormI16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -12018,6 +12345,7 @@ RJ_NOINLINE void VCvtPkNormI16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -12049,6 +12377,7 @@ void VCvtPkNormU16F16Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -12092,6 +12421,7 @@ RJ_NOINLINE void VCvtPkNormU16F16Vop3::execute_modifier_impl(amdgpu::Wavefront &
       static_cast<uint32_t>(inst_.abs), static_cast<uint32_t>(inst_.neg), inst_.clamp != 0,
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
+  // Exception status of this form is unmeasured; it reports no causes.
   uint64_t exec = wf.exec();
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
@@ -13203,17 +13533,26 @@ void VCvtPkFp8F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        static_cast<uint32_t>(
-            amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, false, 0)) |
-        (static_cast<uint32_t>(
-             amdgpu::conversion::encode_fp8(s1, amdgpu::conversion::FP8, 1, mods, mode, false, 0))
-         << 8);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_pack_fp8(s0, s1, amdgpu::conversion::FP8, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel & 0x8u, result, true);
   }
 }
@@ -13242,17 +13581,26 @@ RJ_NOINLINE void VCvtPkFp8F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        static_cast<uint32_t>(
-            amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, false, 0)) |
-        (static_cast<uint32_t>(
-             amdgpu::conversion::encode_fp8(s1, amdgpu::conversion::FP8, 1, mods, mode, false, 0))
-         << 8);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_pack_fp8(s0, s1, amdgpu::conversion::FP8, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel & 0x8u, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -13271,17 +13619,26 @@ void VCvtPkBf8F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        static_cast<uint32_t>(
-            amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, false, 0)) |
-        (static_cast<uint32_t>(
-             amdgpu::conversion::encode_fp8(s1, amdgpu::conversion::BF8, 1, mods, mode, false, 0))
-         << 8);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_pack_fp8(s0, s1, amdgpu::conversion::BF8, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel & 0x8u, result, true);
   }
 }
@@ -13310,17 +13667,26 @@ RJ_NOINLINE void VCvtPkBf8F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        static_cast<uint32_t>(
-            amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, false, 0)) |
-        (static_cast<uint32_t>(
-             amdgpu::conversion::encode_fp8(s1, amdgpu::conversion::BF8, 1, mods, mode, false, 0))
-         << 8);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_pack_fp8(s0, s1, amdgpu::conversion::BF8, mods, mode);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     ::rocjitsu::amdgpu::write_vop3_true16_dst(vdst, wf, lane, opsel & 0x8u, result, true);
   }
   dpp_write_mask_scope_.restore();
@@ -13339,13 +13705,26 @@ void VCvtSrFp8F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, true, s1);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, true, s1);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     const uint32_t shift = ((opsel >> 2) & 0x3u) * 8u;
     const uint32_t old = amdgpu::RegisterAccess(wf).read_lane(vdst, lane);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(
@@ -13377,13 +13756,26 @@ RJ_NOINLINE void VCvtSrFp8F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, true, s1);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_fp8(s0, amdgpu::conversion::FP8, 0, mods, mode, true, s1);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     const uint32_t shift = ((opsel >> 2) & 0x3u) * 8u;
     const uint32_t old = amdgpu::RegisterAccess(wf).read_lane(vdst, lane);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(
@@ -13405,13 +13797,26 @@ void VCvtSrBf8F32Vop3::execute_impl(amdgpu::Wavefront &wf) {
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, true, s1);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, true, s1);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     const uint32_t shift = ((opsel >> 2) & 0x3u) * 8u;
     const uint32_t old = amdgpu::RegisterAccess(wf).read_lane(vdst, lane);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(
@@ -13443,13 +13848,26 @@ RJ_NOINLINE void VCvtSrBf8F32Vop3::execute_modifier_impl(amdgpu::Wavefront &wf) 
       static_cast<uint32_t>(inst_.omod)};
   [[maybe_unused]] const uint32_t opsel = amdgpu::vop3_opsel(inst_);
   uint64_t exec = wf.exec();
+  uint32_t causes = 0;
+  uint64_t results[64] = {};
   for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
     if (!(exec & (1ULL << lane)))
       continue;
     const uint32_t s0 = amdgpu::RegisterAccess(wf).read_lane(src0, lane);
     const uint32_t s1 = amdgpu::RegisterAccess(wf).read_lane(src1, lane);
-    const uint32_t result =
-        amdgpu::conversion::encode_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, true, s1);
+    const auto evaluated =
+        amdgpu::conversion::evaluate_fp8(s0, amdgpu::conversion::BF8, 0, mods, mode, true, s1);
+    causes |= amdgpu::conversion::conversion_causes(amdgpu::conversion::CauseRule::FP8,
+                                                    evaluated.facts, mods);
+    const uint32_t result = static_cast<uint32_t>(evaluated.bits);
+    results[lane] = result;
+  }
+  wf.raise_alu_causes(causes);
+  wf.set_trapsts(wf.trapsts() | causes);
+  for (uint32_t lane = 0; lane < wf.wf_size(); ++lane) {
+    if (!(exec & (1ULL << lane)))
+      continue;
+    const uint32_t result = static_cast<uint32_t>(results[lane]);
     const uint32_t shift = ((opsel >> 2) & 0x3u) * 8u;
     const uint32_t old = amdgpu::RegisterAccess(wf).read_lane(vdst, lane);
     amdgpu::sdwa::write_lane<amdgpu::sdwa::ResultFormat::NONE>(
