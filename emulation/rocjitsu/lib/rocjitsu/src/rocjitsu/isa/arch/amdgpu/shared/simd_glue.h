@@ -704,9 +704,11 @@ template <typename Batch> inline Batch compare_input_f64_simd(Batch value, const
   return value;
 }
 
-/// SIMD counterpart of fp_mode::ieee_minmax for F32 and F64 lanes. NaN results are rare, so
-/// their operand selection is repaired per lane after the vector select.
-template <bool Maximum, typename V> inline V ieee_minmax_simd(V a, V b, const Wavefront &wf) {
+/// SIMD counterpart of fp_mode::ieee_minmax for F32 and F64 lanes, and for F16 lanes widened
+/// to F32 when `Half` is set. NaN results are rare, so their operand selection is repaired per
+/// lane after the vector select.
+template <bool Maximum, bool Half = false, typename V>
+inline V ieee_minmax_simd(V a, V b, const Wavefront &wf) {
   const auto select = [](V lhs, V rhs) {
     if constexpr (Maximum)
       return util::ieee_maximum_simd(lhs, rhs);
@@ -718,6 +720,9 @@ template <bool Maximum, typename V> inline V ieee_minmax_simd(V a, V b, const Wa
   if constexpr (std::is_same_v<typename V::value_type, double>) {
     a = compare_input_f64_simd(a, wf);
     b = compare_input_f64_simd(b, wf);
+  } else if constexpr (Half) {
+    a = compare_input_f16_simd(a, wf);
+    b = compare_input_f16_simd(b, wf);
   } else {
     a = compare_input_f32_simd(a, wf);
     b = compare_input_f32_simd(b, wf);

@@ -1138,6 +1138,24 @@ std::vector<ArithmeticCase> minimum_maximum_cases() {
            {{6, 0x7e01u}}, 0xf0u),
       make("MinimumF16FlushesInput", RDNA4, MINIMUM_F16, {{0, 0x83ffu}, {1, 0u}, {6, 0u}},
            {{6, 0x8000u}}, 0x00u),
+      // The three-operand forms nest the binary rules: Second(First(a, b), c).
+      make("Maximum3F32QuietsSrc2", RDNA4, {0xd62e0006u, 0x040a0300u, 0u},
+           {{0, 0u}, {1, 0u}, {2, 0x7f800001u}}, {{6, 0x7fc00001u}}, 0xf0u),
+      make("Minimum3F32FlushesSrc2", RDNA4, {0xd62d0006u, 0x040a0300u, 0u},
+           {{0, 0u}, {1, 0u}, {2, 0x807fffffu}}, {{6, 0x80000000u}}, 0x00u),
+      // The inner NaN wins over a later quiet NaN.
+      make("MaximumMinimumF32PrefersInnerNan", RDNA4, {0xd66d0006u, 0x040a0300u, 0u},
+           {{0, 0u}, {1, 0x7f800001u}, {2, 0x7fc00000u}}, {{6, 0x7fc00001u}}, 0xf0u),
+      make("MinimumMaximumF32FlushesAll", RDNA4, {0xd66c0006u, 0x040a0300u, 0u},
+           {{0, 1u}, {1, 0u}, {2, 1u}}, {{6, 0u}}, 0x00u),
+      make("Maximum3F16KeepsNegativeNan", RDNA4, {0xd6300006u, 0x040a0300u, 0u},
+           {{0, 0xfd2du}, {1, 0x21c8u}, {2, 0xb723u}, {6, 0u}}, {{6, 0xff2du}}, 0xf0u),
+      make("Minimum3F16FlushesInput", RDNA4, {0xd62f0006u, 0x040a0300u, 0u},
+           {{0, 0x83ffu}, {1, 0u}, {2, 0u}, {6, 0u}}, {{6, 0x8000u}}, 0x00u),
+      make("MaximumMinimumF16QuietsSrc2", RDNA4, {0xd66f0006u, 0x040a0300u, 0u},
+           {{0, 0u}, {1, 0u}, {2, 0x7c01u}, {6, 0u}}, {{6, 0x7e01u}}, 0xf0u),
+      make("MinimumMaximumF16FlushesSrc2", RDNA4, {0xd66e0006u, 0x040a0300u, 0u},
+           {{0, 0u}, {1, 0u}, {2, 1u}, {6, 0u}}, {{6, 0u}}, 0x00u),
       // gfx1250 has no hardware witness and keeps the canonical quiet NaN.
       make("Gfx1250MaximumF32CanonicalNan", ROCJITSU_CODE_ARCH_CDNA5, MAXIMUM_F32,
            {{0, 0x7f800001u}, {1, 0u}}, {{6, 0x7fc00000u}}, 0xf0u),
@@ -2112,6 +2130,16 @@ TEST(ValuFpModeHelpers, IeeeMinmaxOperandRules) {
   EXPECT_EQ(std::bit_cast<uint32_t>(
                 ieee_minmax<true>(f32(0x7f800001u), 0.0f, ROCJITSU_CODE_ARCH_CDNA5, 3)),
             0x7fc00000u);
+  using amdgpu::fp_mode::ieee_minmax3;
+  EXPECT_EQ(std::bit_cast<uint32_t>(
+                ieee_minmax3<true, false>(0.0f, f32(0x7f800001u), f32(0x7fc00000u), RDNA4, 3)),
+            0x7fc00001u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax3<false, true>(f32(1u), 0.0f, f32(1u), RDNA4, 0)),
+            0u);
+  EXPECT_EQ(util::f32_to_f16(ieee_minmax3<true, true, true>(util::f16_to_f32(0xfd2du),
+                                                            util::f16_to_f32(0x21c8u),
+                                                            util::f16_to_f32(0xb723u), RDNA4, 3)),
+            0xff2du);
 }
 
 TEST(ValuFpModeHelpers, F16FmaRetainsTinyProduct) {

@@ -2151,13 +2151,12 @@ SIMD_VOP3_TERNARY_FP32: dict[str, str] = {
     'v_min3_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmin(a, b), c); }',
     'v_minmax_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
     'v_maxmin_num_f32_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
-    # IEEE-2019 maximum/minimum 3-input + combined forms. The scalar bodies are
-    # the exact nested composition of the binary maximum/minimum (NaN-propagating,
-    # signed-zero-ordered) — see util::ieee_{maximum,minimum}_simd.
-    'v_maximum3_f32_vop3': '[](auto a, auto b, auto c) { return util::ieee_maximum_simd(util::ieee_maximum_simd(a, b), c); }',
-    'v_minimum3_f32_vop3': '[](auto a, auto b, auto c) { return util::ieee_minimum_simd(util::ieee_minimum_simd(a, b), c); }',
-    'v_maximumminimum_f32_vop3': '[](auto a, auto b, auto c) { return util::ieee_minimum_simd(util::ieee_maximum_simd(a, b), c); }',
-    'v_minimummaximum_f32_vop3': '[](auto a, auto b, auto c) { return util::ieee_maximum_simd(util::ieee_minimum_simd(a, b), c); }',
+    # IEEE-2019 maximum/minimum 3-input + combined forms: the nested binary
+    # V_MINIMUM/V_MAXIMUM rules of fp_mode::ieee_minmax3.
+    'v_maximum3_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true>(amdgpu::ieee_minmax_simd<true>(a, b, wf), c, wf); }',
+    'v_minimum3_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<false>(amdgpu::ieee_minmax_simd<false>(a, b, wf), c, wf); }',
+    'v_maximumminimum_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<false>(amdgpu::ieee_minmax_simd<true>(a, b, wf), c, wf); }',
+    'v_minimummaximum_f32_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true>(amdgpu::ieee_minmax_simd<false>(a, b, wf), c, wf); }',
     # Cube applies OMOD itself; false leaves only CLAMP to the operand glue.
     **{
         f'v_{op}_f32_vop3': (
@@ -2193,10 +2192,10 @@ SIMD_VOP3_TERNARY_FP16: dict[str, str] = {
     'v_minmax_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmax(util::stdx::fmin(a, b), c); }',
     'v_maxmin_num_f16_vop3': '[](auto a, auto b, auto c) { return util::stdx::fmin(util::stdx::fmax(a, b), c); }',
     # IEEE-2019 maximum/minimum 3-input + combined (f16; widened to f32 by glue).
-    'v_maximum3_f16_vop3': '[](auto a, auto b, auto c) { return util::ieee_maximum_simd(util::ieee_maximum_simd(a, b), c); }',
-    'v_minimum3_f16_vop3': '[](auto a, auto b, auto c) { return util::ieee_minimum_simd(util::ieee_minimum_simd(a, b), c); }',
-    'v_maximumminimum_f16_vop3': '[](auto a, auto b, auto c) { return util::ieee_minimum_simd(util::ieee_maximum_simd(a, b), c); }',
-    'v_minimummaximum_f16_vop3': '[](auto a, auto b, auto c) { return util::ieee_maximum_simd(util::ieee_minimum_simd(a, b), c); }',
+    'v_maximum3_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true, true>(amdgpu::ieee_minmax_simd<true, true>(a, b, wf), c, wf); }',
+    'v_minimum3_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<false, true>(amdgpu::ieee_minmax_simd<false, true>(a, b, wf), c, wf); }',
+    'v_maximumminimum_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<false, true>(amdgpu::ieee_minmax_simd<true, true>(a, b, wf), c, wf); }',
+    'v_minimummaximum_f16_vop3': '[&wf](auto a, auto b, auto c) { return amdgpu::ieee_minmax_simd<true, true>(amdgpu::ieee_minmax_simd<false, true>(a, b, wf), c, wf); }',
     'v_div_fixup_f16_vop3': (
         '[&wf](auto p, auto b, auto c) { return ::rocjitsu::amdgpu::div_fixup_f16_promoted_simd(p, b, c, wf.fp_round_mode_f16_f64(), wf.fp_denorm_mode_f16_f64()); }, true'
     ),

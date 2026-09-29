@@ -1957,12 +1957,20 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             return f'static_cast<uint32_t>(util::f32_to_f16_mode({fp8_decode_fn}(static_cast<uint8_t>({arg})), wf.fp16_ovfl()))'
         return f'static_cast<uint32_t>(util::f32_to_f16_mode({bf8_decode_fn}(static_cast<uint8_t>({arg})), wf.fp16_ovfl()))'
 
-    if len(args) == 2 and callee in ('ieee_minimum', 'ieee_maximum'):
-        maximum = 'true' if callee == 'ieee_maximum' else 'false'
+    ieee_minmax_calls = {
+        'ieee_minimum': ('ieee_minmax', 'false'),
+        'ieee_maximum': ('ieee_minmax', 'true'),
+        'ieee_minimum3': ('ieee_minmax3', 'false, false'),
+        'ieee_maximum3': ('ieee_minmax3', 'true, true'),
+        'ieee_maximumminimum': ('ieee_minmax3', 'true, false'),
+        'ieee_minimummaximum': ('ieee_minmax3', 'false, true'),
+    }
+    if callee in ieee_minmax_calls:
+        helper, selects = ieee_minmax_calls[callee]
         half = ', true' if node.ty == SemaType.F16 else ''
         mode = 'f32' if node.ty == SemaType.F32 else 'f16_f64'
         return (
-            f'amdgpu::fp_mode::ieee_minmax<{maximum}{half}>({args_str}, '
+            f'amdgpu::fp_mode::{helper}<{selects}{half}>({args_str}, '
             f'wf.cu().arch(), wf.fp_denorm_mode_{mode}())'
         )
     if len(args) == 1 and callee == 'compare_input':

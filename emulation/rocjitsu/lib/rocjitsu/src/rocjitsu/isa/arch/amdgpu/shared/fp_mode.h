@@ -355,6 +355,15 @@ inline T ieee_minmax(T a, T b, rj_code_arch_t arch, uint32_t denorm_mode) {
     return a < b ? a : b;
 }
 
+/// @brief Evaluate the three-operand IEEE 754-2019 minimum/maximum forms.
+/// @details V_MINIMUM3, V_MAXIMUM3, V_MINIMUMMAXIMUM and V_MAXIMUMMINIMUM select
+/// `Second(First(a, b), c)` under the binary rules, as measured on gfx1201.
+template <bool FirstMaximum, bool SecondMaximum, bool Half = false, typename T>
+inline T ieee_minmax3(T a, T b, T c, rj_code_arch_t arch, uint32_t denorm_mode) {
+  return ieee_minmax<SecondMaximum, Half>(ieee_minmax<FirstMaximum, Half>(a, b, arch, denorm_mode),
+                                          c, arch, denorm_mode);
+}
+
 /// @brief Apply the result-format rules required by an active OMOD.
 /// @details OMOD always flushes an output subnormal and maps either signed zero
 /// to positive zero. These helpers operate after the result has been rounded to

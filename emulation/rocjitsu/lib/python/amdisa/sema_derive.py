@@ -1303,6 +1303,9 @@ class _VectorBinop(_ScalarDeriver):
         return SemaBlock(sem.name, ExecModel.VECTOR, body)
 
 
+_IEEE_MINMAX3 = ('minimum3', 'maximum3', 'minimummaximum', 'maximumminimum')
+
+
 @_register('vector_ternary')
 class _VectorTernary(_ScalarDeriver):
     @staticmethod
@@ -1377,11 +1380,14 @@ class _VectorTernary(_ScalarDeriver):
         elif op in ('fma', 'fmac'):
             result = SemaNode(SemaNodeKind.FMA, ty=ty, children=(src0, src1, src2))
         else:
+            # The three-operand IEEE minimum/maximum forms nest the binary
+            # V_MINIMUM/V_MAXIMUM operand rules.
+            fn = f'ieee_{op}' if op in _IEEE_MINMAX3 else op
             result = SemaNode(
                 SemaNodeKind.CALL,
                 ty=ty,
-                call_name=op,
-                children=(_id(op), src0, src1, src2),
+                call_name=fn,
+                children=(_id(fn), src0, src1, src2),
             )
         body = _assign(_cast(_dst(0), ty), result)
         return SemaBlock(sem.name, ExecModel.VECTOR, body)
