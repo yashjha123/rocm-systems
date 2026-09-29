@@ -917,7 +917,8 @@ inline native<float> flush_denorm_f32_simd(native<float> v) {
 }
 
 /// Native-width adapters for the shared integer transcendental mappings.
-/// F16 inputs are promoted to F32; RSQ/SQRT retain the half input-denormal policy.
+/// F16 inputs are promoted to F32; RSQ/SQRT retain the half input-denormal policy,
+/// and RCP returns its half result, rounded before output modifiers.
 inline native<float> rcp_f32_simd(native<float> a) {
   return map_native_convert_scalar<float, float>(a,
                                                  [](float value) { return amdgpu_rcp_f32(value); });
@@ -926,6 +927,11 @@ inline native<float> rcp_f32_simd(native<float> a) {
 inline native<float> rsq_f32_simd(native<float> a) {
   return map_native_convert_scalar<float, float>(a,
                                                  [](float value) { return amdgpu_rsq_f32(value); });
+}
+
+inline native<float> rcp_f16_simd(native<float> a, uint32_t denorm_mode, bool fp16_ovfl) {
+  return map_native_convert_scalar<float, float>(
+      a, [=](float value) { return amdgpu_rcp_f16(value, denorm_mode, fp16_ovfl); });
 }
 
 inline native<float> rsq_f16_simd(native<float> a, uint32_t denorm_mode) {
