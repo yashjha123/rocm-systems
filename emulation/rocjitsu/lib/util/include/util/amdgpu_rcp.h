@@ -6,8 +6,8 @@
 /// @file
 /// @brief Shared FP32 and FP16 reciprocal mappings for AMDGPU instruction execution.
 
+#include "util/amdgpu_trans_f16.h"
 #include "util/big_int.h"
-#include "util/data_types.h"
 
 #include <bit>
 #include <cstdint>
@@ -372,20 +372,9 @@ inline float amdgpu_rcp_f32(float value) {
 }
 
 /// @brief AMD FP16 reciprocal of an exactly promoted source, rounded to half.
-/// @details Denormal mode bit 0 preserves half input subnormals and bit 1 output subnormals;
-/// flushing retains the sign. The F32 mapping result rounds to nearest-even half regardless of
-/// guest rounding. FP16_OVFL saturates every infinite result, including the reciprocal of zero.
-/// The returned F32 value is exactly the half result to which callers apply output modifiers.
+/// @details Uses amdgpu_trans_f16; FP16_OVFL also saturates the reciprocal of zero.
 inline float amdgpu_rcp_f16(float value, uint32_t denorm_mode, bool fp16_ovfl) {
-  uint32_t bits = std::bit_cast<uint32_t>(value);
-  if ((denorm_mode & 1u) == 0 && (bits & 0x7fffffffu) < 0x38800000u)
-    bits &= 0x80000000u;
-  uint16_t result = f32_to_f16(amdgpu_rcp_f32(std::bit_cast<float>(bits)));
-  if ((denorm_mode & 2u) == 0 && (result & 0x7c00u) == 0)
-    result &= 0x8000u;
-  if (fp16_ovfl && (result & 0x7fffu) == 0x7c00u)
-    result = (result & 0x8000u) | 0x7bffu;
-  return f16_to_f32(result);
+  return amdgpu_trans_f16(value, denorm_mode, fp16_ovfl, [](float x) { return amdgpu_rcp_f32(x); });
 }
 
 } // namespace util

@@ -398,6 +398,29 @@ TEST(TranscendentalTest, HalfRcpCompleteHardwareDigests) {
     }
 }
 
+TEST(TranscendentalTest, HalfRsqCompleteHardwareDigests) {
+  // FNV hashes of raw gfx1201 V_RSQ_F16/V_S_RSQ_F16 captures over all 65536
+  // input encodings, identical in every FP_ROUND setting. FP16_OVFL saturates
+  // RSQ of zero and of flushed subnormals.
+  const uint64_t captured[4][2] = {
+      {0xc3c3820339359658ull, 0xa768285daab2a658ull},
+      {0x5f415b15127233b9ull, 0x4386e1ccea89b915ull},
+      {0xc3c3820339359658ull, 0xa768285daab2a658ull},
+      {0x5f415b15127233b9ull, 0x4386e1ccea89b915ull},
+  };
+  for (uint32_t denorm_mode = 0; denorm_mode < 4; ++denorm_mode)
+    for (bool overflow : {false, true}) {
+      uint64_t digest = 14695981039346656037ull;
+      for (uint32_t input = 0; input < 65536; ++input) {
+        const float result =
+            rsq_f16(util::f16_to_f32(static_cast<uint16_t>(input)), denorm_mode, overflow);
+        digest = (digest ^ util::f32_to_f16(result)) * 1099511628211ull;
+      }
+      EXPECT_EQ(digest, captured[denorm_mode][overflow])
+          << "denorm=" << denorm_mode << " overflow=" << overflow;
+    }
+}
+
 TEST(TranscendentalTest, HalfSinCosCompleteHardwareDigests) {
   // FNV hashes of raw gfx1201 V_SIN_F16/V_COS_F16 captures over all 65536
   // input encodings, identical in every FP_ROUND and FP16_OVFL setting.

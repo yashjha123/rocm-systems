@@ -430,7 +430,8 @@ def gen_vector_unary(
             'wf.fp16_ovfl())',
             'sqrt': 'amdgpu::transcendental::sqrt_f16(s, wf.fp_denorm_mode_f16_f64(), '
             'amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode()))',
-            'rsq': 'amdgpu::transcendental::rsq_f16(s, wf.fp_denorm_mode_f16_f64())',
+            'rsq': 'amdgpu::transcendental::rsq_f16(s, wf.fp_denorm_mode_f16_f64(), '
+            'wf.fp16_ovfl())',
             'floor': 'std::floor(s)',
             'ceil': 'std::ceil(s)',
             'trunc': 'std::trunc(s)',
@@ -453,7 +454,7 @@ def gen_vector_unary(
         if is_vop3:
             L.append(f'    float result = {expr};')
             # These helpers return the rounded half; OMOD then scales that half.
-            rounded_result = op in ('log2', 'exp2', 'rcp', 'sin', 'cos')
+            rounded_result = op in ('log2', 'exp2', 'rcp', 'rsq', 'sin', 'cos')
             if rounded_result:
                 L.extend(
                     [

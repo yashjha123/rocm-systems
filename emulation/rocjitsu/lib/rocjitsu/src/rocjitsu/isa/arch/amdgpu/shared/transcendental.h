@@ -12,8 +12,9 @@
 /// V_RSQ_F32, V_RSQ_F16, V_SQRT_F32, V_SQRT_F16, V_LOG_F32, V_EXP_F32, V_SIN_F32, V_COS_F32,
 /// V_RCP_F64, V_RSQ_F64, V_SQRT_F64.
 /// F32 reciprocal, square root and F32/F16 reciprocal square root match the captured RDNA3/4
-/// mappings. F16 RSQ/SQRT apply the half input-denormal policy after promotion to F32. F16 RCP,
-/// SIN and COS also apply the half output policies and round to half before output modifiers.
+/// mappings. F16 SQRT applies the half input-denormal policy after promotion to F32. F16 RCP,
+/// RSQ, SIN, COS, LOG and EXP share util::amdgpu_trans_f16: half denormal and FP16_OVFL
+/// policies, rounding to half before output modifiers.
 /// F32 LOG/EXP and SIN/COS use staged integer arithmetic modeled from RDNA3/4 captures,
 /// including coordinate truncation and intermediate product rounding.
 ///
@@ -26,6 +27,7 @@
 #include "util/amdgpu_rcp.h"
 #include "util/amdgpu_rsq.h"
 #include "util/amdgpu_sqrt.h"
+#include "util/amdgpu_trans_f16.h"
 #include "util/amdgpu_trig.h"
 #include "util/simd.h"
 
@@ -50,8 +52,11 @@ inline float rcp_f16(float x, uint32_t denorm_mode, bool fp16_ovfl) {
 /// @brief AMD single-precision reciprocal square root matching physical RDNA3/4 (within 1 ULP).
 inline float rsq_f32(float x) { return util::amdgpu_rsq_f32(x); }
 
-/// @brief F16 reciprocal square root in the promoted F32 domain, with F16 input policy.
-inline float rsq_f16(float x, uint32_t denorm_mode) { return util::amdgpu_rsq_f16(x, denorm_mode); }
+/// @brief F16 reciprocal square root with half denormal and FP16_OVFL policies, rounded before
+/// OMOD.
+inline float rsq_f16(float x, uint32_t denorm_mode, bool fp16_ovfl) {
+  return util::amdgpu_rsq_f16(x, denorm_mode, fp16_ovfl);
+}
 
 /// @brief Single-precision square root matching physical RDNA3/4 (within 1 ULP).
 inline float sqrt_f32(float x, bool quiet_snan = true) {
@@ -78,37 +83,30 @@ namespace detail {
 // The returned F32 value represents the already rounded architectural half.
 template <bool Logarithm>
 inline float log_exp_f16_nearest(float x, uint32_t denorm_mode, bool fp16_ovfl, bool quiet_snan) {
-  uint32_t bits = std::bit_cast<uint32_t>(x);
-  uint32_t magnitude = bits & 0x7fffffffu;
-  if (magnitude > 0x7f800000u)
-    return std::bit_cast<float>(bits | (quiet_snan ? 0x00400000u : 0u));
-  if (magnitude == 0x7f800000u) {
-    if constexpr (Logarithm)
-      return bits & 0x80000000u ? std::bit_cast<float>(0xffc00000u) : x;
-    return bits & 0x80000000u ? 0.0f : x;
-  }
-  if (!(denorm_mode & 1u) && magnitude < 0x38800000u) {
-    bits &= 0x80000000u;
-    magnitude = 0;
-    x = std::bit_cast<float>(bits);
-  }
-  double value;
-  if constexpr (Logarithm) {
-    if (magnitude == 0)
-      return fp16_ovfl ? -65504.0f : -std::numeric_limits<float>::infinity();
-    if (bits & 0x80000000u)
-      return std::bit_cast<float>(0xffc00000u);
-    value = std::log2(static_cast<double>(x));
-  } else {
-    // Outside this interval every nearest half result is zero or overflows.
-    // Keep the finite-input provenance instead of overflowing host libm.
-    value = std::exp2(std::clamp(static_cast<double>(x), -32.0, 32.0));
-  }
-  // F32 evaluation can land on a half midpoint and round in the wrong direction.
-  uint16_t result = pseudo_scalar::round_f16_result(value, 0, 0, false, fp16_ovfl, false);
-  if (!(denorm_mode & 2u) && (result & 0x7c00u) == 0)
-    result &= 0x8000u;
-  return util::f16_to_f32(result);
+  return util::amdgpu_trans_f16(x, denorm_mode, fp16_ovfl, [=](float source) -> float {
+    const uint32_t bits = std::bit_cast<uint32_t>(source);
+    const uint32_t magnitude = bits & 0x7fffffffu;
+    if (magnitude > 0x7f800000u)
+      return std::bit_cast<float>(bits | (quiet_snan ? 0x00400000u : 0u));
+    double value;
+    if constexpr (Logarithm) {
+      if (magnitude == 0)
+        return -std::numeric_limits<float>::infinity();
+      if (bits & 0x80000000u)
+        return std::bit_cast<float>(0xffc00000u);
+      if (magnitude == 0x7f800000u)
+        return source;
+      value = std::log2(static_cast<double>(source));
+    } else {
+      if (magnitude == 0x7f800000u)
+        return bits & 0x80000000u ? 0.0f : source;
+      // Outside this interval every nearest half result is zero or overflows.
+      // Keep the finite-input provenance instead of overflowing host libm.
+      value = std::exp2(std::clamp(static_cast<double>(source), -32.0, 32.0));
+    }
+    // Round the wide result directly: an F32 intermediate can land on a half midpoint.
+    return util::f16_to_f32(pseudo_scalar::round_f16_result(value, 0, 0, false, false, false));
+  });
 }
 } // namespace detail
 

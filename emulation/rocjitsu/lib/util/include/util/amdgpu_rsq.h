@@ -6,6 +6,7 @@
 /// @file
 /// @brief Shared reciprocal-square-root mapping for AMDGPU instruction execution.
 
+#include "util/amdgpu_trans_f16.h"
 #include "util/big_int.h"
 
 #include <bit>
@@ -392,17 +393,11 @@ inline float amdgpu_rsq_f32(float value) {
   return std::bit_cast<float>(detail::amdgpu_rsq_bits(std::bit_cast<uint32_t>(value)));
 }
 
-/// @brief Evaluate reciprocal square root of an exactly promoted F16 source.
-/// @details Denormal mode bit 0 preserves F16 input subnormals; otherwise they become
-/// signed zero: promotion alone makes F16 subnormals appear normal in F32. The returned
-/// F32 approximation is unrounded to F16; callers must narrow it with nearest-even
-/// rounding after output modifiers. That result matches RDNA3/4 and satisfies the stricter
-/// 0.51-ULP F16 bound of older RDNA/CDNA profiles. Guest rounding mode is ignored.
-inline float amdgpu_rsq_f16(float value, uint32_t denorm_mode) {
-  uint32_t bits = std::bit_cast<uint32_t>(value);
-  if ((denorm_mode & 1u) == 0 && (bits & 0x7fffffffu) < 0x38800000u)
-    bits &= 0x80000000u;
-  return amdgpu_rsq_f32(std::bit_cast<float>(bits));
+/// @brief Reciprocal square root of an exactly promoted F16 source, rounded to half.
+/// @details Uses amdgpu_trans_f16; FP16_OVFL also saturates RSQ of zero. The
+/// result satisfies the stricter 0.51-ULP F16 bound of older RDNA/CDNA profiles.
+inline float amdgpu_rsq_f16(float value, uint32_t denorm_mode, bool fp16_ovfl) {
+  return amdgpu_trans_f16(value, denorm_mode, fp16_ovfl, [](float x) { return amdgpu_rsq_f32(x); });
 }
 
 } // namespace util

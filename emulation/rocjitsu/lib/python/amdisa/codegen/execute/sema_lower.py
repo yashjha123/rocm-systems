@@ -2013,7 +2013,7 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             f'amdgpu::fp_mode::compare_input_{precision}({args[0]}, '
             f'wf.fp_denorm_mode_{mode}())'
         )
-    # Promotion loses the F16 denormal class, so SQRT/RSQ need the half input policy.
+    # Promotion loses the F16 denormal class, so SQRT needs the half input policy.
     if len(args) == 1 and callee == 'sqrt' and node.ty in (SemaType.F16, SemaType.F32):
         half_policy = 'wf.fp_denorm_mode_f16_f64(), ' if node.ty == SemaType.F16 else ''
         suffix = 'f16' if node.ty == SemaType.F16 else 'f32'
@@ -2021,15 +2021,10 @@ def _lower_call(node: SemaNode, ctx: LoweringContext) -> str:
             f'amdgpu::transcendental::sqrt_{suffix}({args[0]}, {half_policy}'
             'amdgpu::fp_mode::quiets_nan(wf.cu().arch(), wf.ieee_mode()))'
         )
-    if len(args) == 1 and callee == 'rsq' and node.ty == SemaType.F16:
+    # Half RCP/RSQ round to half, with the half denormal and FP16_OVFL policies, before OMOD.
+    if len(args) == 1 and callee in ('rcp', 'rsq') and node.ty == SemaType.F16:
         return (
-            f'amdgpu::transcendental::rsq_f16({args[0]}, '
-            'wf.fp_denorm_mode_f16_f64())'
-        )
-    # RCP also rounds to half, with its output policies, before OMOD.
-    if len(args) == 1 and callee == 'rcp' and node.ty == SemaType.F16:
-        return (
-            f'amdgpu::transcendental::rcp_f16({args[0]}, '
+            f'amdgpu::transcendental::{callee}_f16({args[0]}, '
             'wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl())'
         )
     if len(args) == 1 and callee in ('sin', 'cos') and node.ty == SemaType.F16:

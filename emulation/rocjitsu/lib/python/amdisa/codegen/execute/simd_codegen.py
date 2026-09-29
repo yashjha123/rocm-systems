@@ -718,9 +718,9 @@ SIMD_VOP1_UNARY: dict[str, tuple[str, str, str]] = {
         ' auto f = util::f16_to_f32_simd(a);'
         ' return util::f32_to_f16_simd(f - util::floor_simd(f)); }',
     ),
-    # f16 transcendentals operate on promoted inputs. RSQ/SQRT apply the F16
-    # input-denormal policy; RCP returns its rounded half result. The other
-    # operations reuse the F32 helpers.
+    # f16 transcendentals operate on promoted inputs. SQRT applies the F16
+    # input-denormal policy; RCP and RSQ return their rounded half result. The
+    # other operations reuse the F32 helpers.
     'v_rcp_f16_vop1': (
         'uint32_t',
         'uint32_t',
@@ -733,7 +733,7 @@ SIMD_VOP1_UNARY: dict[str, tuple[str, str, str]] = {
         'uint32_t',
         '[&wf](auto a) {'
         ' return util::f32_to_f16_simd(util::rsq_f16_simd('
-        'util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64())); }',
+        'util::f16_to_f32_simd(a), wf.fp_denorm_mode_f16_f64(), wf.fp16_ovfl())); }',
     ),
     'v_sqrt_f16_vop1': (
         'uint32_t',
@@ -2072,7 +2072,8 @@ SIMD_VOP3_UNARY_FP16: dict[str, str] = {
         ' wf.fp16_ovfl()); }'
     ),
     'v_rsq_f16_vop3': (
-        '[&wf](auto a) { return util::rsq_f16_simd(a, wf.fp_denorm_mode_f16_f64()); }'
+        '[&wf](auto a) { return util::rsq_f16_simd(a, wf.fp_denorm_mode_f16_f64(),'
+        ' wf.fp16_ovfl()); }'
     ),
     'v_exp_f16_vop3': (
         '[&wf](auto a) { return amdgpu::transcendental::log_exp_f16_simd<false>(a, '
