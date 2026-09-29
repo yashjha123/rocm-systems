@@ -1095,6 +1095,55 @@ std::vector<ArithmeticCase> omod_underflow_cases() {
   return cases;
 }
 
+std::vector<ArithmeticCase> minimum_maximum_cases() {
+  // Physical gfx1201 witnesses: V_MINIMUM and V_MAXIMUM return the first NaN
+  // operand quieted with its sign and payload, and flush only input denormals.
+  // Encodings from llvm-mc -mcpu=gfx1201.
+  const auto make = [](std::string name, rj_code_arch_t arch, std::array<uint32_t, 3> words,
+                       std::vector<std::pair<uint32_t, uint32_t>> sources,
+                       std::vector<std::pair<uint32_t, uint32_t>> expected, uint32_t mode) {
+    return ArithmeticCase{std::move(name),     arch, words,       std::move(sources),
+                          std::move(expected), mode, FE_TONEAREST};
+  };
+  constexpr rj_code_arch_t RDNA4 = ROCJITSU_CODE_ARCH_RDNA4;
+  constexpr std::array<uint32_t, 3> MAXIMUM_F32{0xd7660006u, 0x00020300u, 0u};
+  constexpr std::array<uint32_t, 3> MINIMUM_F32{0xd7650006u, 0x00020300u, 0u};
+  constexpr std::array<uint32_t, 3> MAXIMUM_F64{0xd7420006u, 0x00020500u, 0u};
+  constexpr std::array<uint32_t, 3> MINIMUM_F64{0xd7410006u, 0x00020500u, 0u};
+  constexpr std::array<uint32_t, 3> MAXIMUM_F16{0xd7680006u, 0x00020300u, 0u};
+  constexpr std::array<uint32_t, 3> MINIMUM_F16{0xd7670006u, 0x00020300u, 0u};
+  return {
+      make("MaximumF32QuietsSignalingSrc0", RDNA4, MAXIMUM_F32, {{0, 0x7f800001u}, {1, 0u}},
+           {{6, 0x7fc00001u}}, 0xf0u),
+      // A quiet src0 wins over a signaling src1 and keeps its sign.
+      make("MaximumF32PrefersSrc0Nan", RDNA4, MAXIMUM_F32, {{0, 0xffc00000u}, {1, 0x7f800001u}},
+           {{6, 0xffc00000u}}, 0xf0u),
+      make("MinimumF32QuietsSrc1", RDNA4, MINIMUM_F32, {{0, 1u}, {1, 0x7f800001u}},
+           {{6, 0x7fc00001u}}, 0xf0u),
+      make("MinimumF32FlushesInput", RDNA4, MINIMUM_F32, {{0, 0x807fffffu}, {1, 0u}},
+           {{6, 0x80000000u}}, 0x00u),
+      make("MinimumF32KeepsInput", RDNA4, MINIMUM_F32, {{0, 0x807fffffu}, {1, 0u}},
+           {{6, 0x807fffffu}}, 0xf0u),
+      // Input flushing alone zeroes the operand; output flushing alone keeps it.
+      make("MaximumF32FlushInOnly", RDNA4, MAXIMUM_F32, {{0, 1u}, {1, 0u}}, {{6, 0u}}, 0x20u),
+      make("MaximumF32FlushOutOnly", RDNA4, MAXIMUM_F32, {{0, 1u}, {1, 0u}}, {{6, 1u}}, 0x10u),
+      make("MaximumF64QuietsSignalingSrc0", RDNA4, MAXIMUM_F64,
+           {{0, 1u}, {1, 0x7ff00000u}, {2, 0u}, {3, 0u}}, {{6, 1u}, {7, 0x7ff80000u}}, 0xf0u),
+      make("MinimumF64FlushesInput", RDNA4, MINIMUM_F64,
+           {{0, 0xffffffffu}, {1, 0x800fffffu}, {2, 0u}, {3, 0u}}, {{6, 0u}, {7, 0x80000000u}},
+           0x00u),
+      make("MaximumF16QuietsSignalingSrc0", RDNA4, MAXIMUM_F16, {{0, 0x7c01u}, {1, 0u}, {6, 0u}},
+           {{6, 0x7e01u}}, 0xf0u),
+      make("MinimumF16QuietsSrc1", RDNA4, MINIMUM_F16, {{0, 1u}, {1, 0x7c01u}, {6, 0u}},
+           {{6, 0x7e01u}}, 0xf0u),
+      make("MinimumF16FlushesInput", RDNA4, MINIMUM_F16, {{0, 0x83ffu}, {1, 0u}, {6, 0u}},
+           {{6, 0x8000u}}, 0x00u),
+      // gfx1250 has no hardware witness and keeps the canonical quiet NaN.
+      make("Gfx1250MaximumF32CanonicalNan", ROCJITSU_CODE_ARCH_CDNA5, MAXIMUM_F32,
+           {{0, 0x7f800001u}, {1, 0u}}, {{6, 0x7fc00000u}}, 0xf0u),
+  };
+}
+
 std::vector<ArithmeticCase> f16_fma_nan_cases() {
   std::vector<ArithmeticCase> cases;
   for (rj_code_arch_t arch : {ROCJITSU_CODE_ARCH_RDNA3, ROCJITSU_CODE_ARCH_RDNA3_5,
@@ -1930,6 +1979,11 @@ INSTANTIATE_TEST_SUITE_P(OmodUnderflow, ValuFpModeTest, testing::ValuesIn(omod_u
                            return info.param.name;
                          });
 
+INSTANTIATE_TEST_SUITE_P(MinimumMaximum, ValuFpModeTest, testing::ValuesIn(minimum_maximum_cases()),
+                         [](const testing::TestParamInfo<ArithmeticCase> &info) {
+                           return info.param.name;
+                         });
+
 INSTANTIATE_TEST_SUITE_P(F16FmaOmod, ValuFpModeTest, testing::ValuesIn(f16_fma_omod_cases()),
                          [](const testing::TestParamInfo<ArithmeticCase> &info) {
                            return info.param.name;
@@ -2027,6 +2081,37 @@ TEST(ValuFpModeHelpers, MixedF16FmaCancellationAcrossF32Range) {
                   false, false),
               mode == 2 ? 0x8001u : 0x8000u);
   }
+}
+
+TEST(ValuFpModeHelpers, IeeeMinmaxOperandRules) {
+  // The per-lane counterpart of the MinimumMaximum witnesses; the instruction
+  // tests above take the SIMD path for F32 and F64.
+  using amdgpu::fp_mode::ieee_minmax;
+  constexpr rj_code_arch_t RDNA4 = ROCJITSU_CODE_ARCH_RDNA4;
+  const auto f32 = [](uint32_t bits) { return std::bit_cast<float>(bits); };
+  const auto f64 = [](uint64_t bits) { return std::bit_cast<double>(bits); };
+  EXPECT_EQ(
+      std::bit_cast<uint32_t>(ieee_minmax<true>(f32(0xffc00000u), f32(0x7f800001u), RDNA4, 3)),
+      0xffc00000u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax<false>(f32(1u), f32(0x7f800001u), RDNA4, 3)),
+            0x7fc00001u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax<false>(f32(0x807fffffu), 0.0f, RDNA4, 0)),
+            0x80000000u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax<true>(f32(1u), 0.0f, RDNA4, 1)), 1u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax<true>(-0.0f, 0.0f, RDNA4, 3)), 0u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(ieee_minmax<false>(0.0f, -0.0f, RDNA4, 3)), 0x80000000u);
+  EXPECT_EQ(std::bit_cast<uint64_t>(ieee_minmax<true>(f64(0x7ff0000000000001u), 0.0, RDNA4, 3)),
+            0x7ff8000000000001u);
+  EXPECT_EQ(std::bit_cast<uint64_t>(ieee_minmax<false>(f64(0x800fffffffffffffu), 0.0, RDNA4, 0)),
+            0x8000000000000000u);
+  // F16 operands arrive promoted; the payload returns intact through f32_to_f16.
+  EXPECT_EQ(util::f32_to_f16(ieee_minmax<true, true>(util::f16_to_f32(0x7c01u), 0.0f, RDNA4, 3)),
+            0x7e01u);
+  EXPECT_EQ(util::f32_to_f16(ieee_minmax<false, true>(util::f16_to_f32(0x83ffu), 0.0f, RDNA4, 0)),
+            0x8000u);
+  EXPECT_EQ(std::bit_cast<uint32_t>(
+                ieee_minmax<true>(f32(0x7f800001u), 0.0f, ROCJITSU_CODE_ARCH_CDNA5, 3)),
+            0x7fc00000u);
 }
 
 TEST(ValuFpModeHelpers, F16FmaRetainsTinyProduct) {

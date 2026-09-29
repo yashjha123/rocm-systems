@@ -1290,7 +1290,15 @@ class _VectorBinop(_ScalarDeriver):
 
         src0 = _cast(_src(0), ty)
         src1 = _cast(_src(1), ty)
-        result = _vec_binop_expr(op, src0, src1, ty)
+        if op in ('minimum', 'maximum'):
+            # V_MINIMUM/V_MAXIMUM apply MODE input flushing and keep the NaN
+            # operand; S_MINIMUM/S_MAXIMUM keep the plain inline template.
+            fn = f'ieee_{op}'
+            result = SemaNode(
+                SemaNodeKind.CALL, ty=ty, call_name=fn, children=(_id(fn), src0, src1)
+            )
+        else:
+            result = _vec_binop_expr(op, src0, src1, ty)
         body = _assign(_cast(_dst(0), ty), result)
         return SemaBlock(sem.name, ExecModel.VECTOR, body)
 

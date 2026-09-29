@@ -306,6 +306,55 @@ inline double compare_input_f64(double value, uint32_t denorm_mode) {
   return value;
 }
 
+/// @brief Whether V_MINIMUM and V_MAXIMUM return their NaN operand and honor input flushing.
+/// @details Measured on gfx1201: a NaN result is the first NaN operand in source order,
+/// quieted, with its sign and payload; a quiet src0 wins over a signaling src1. With input
+/// denormals disabled an operand becomes zero of the same sign, and a denormal result is never
+/// flushed. Other profiles keep the canonical quiet NaN and compare unflushed operands.
+inline bool minmax_keeps_nan_operand(rj_code_arch_t arch) {
+  return arch == ROCJITSU_CODE_ARCH_RDNA4;
+}
+
+/// @brief Set the quiet bit of a NaN, keeping its sign and payload.
+template <typename T> inline T quiet_nan_operand(T value) {
+  using Bits = std::conditional_t<sizeof(T) == sizeof(uint64_t), uint64_t, uint32_t>;
+  constexpr Bits QUIET = Bits{1} << (std::numeric_limits<T>::digits - 2);
+  return std::bit_cast<T>(static_cast<Bits>(std::bit_cast<Bits>(value) | QUIET));
+}
+
+/// @brief Evaluate IEEE 754-2019 minimum or maximum of two VOP3 operands.
+/// @details `Half` marks F16 operands promoted exactly to F32; their NaN payload survives the
+/// round trip because promotion and narrowing both shift it by 13 bits. `denorm_mode` is the
+/// MODE.FP_DENORM field of the operand format.
+template <bool Maximum, bool Half = false, typename T>
+inline T ieee_minmax(T a, T b, rj_code_arch_t arch, uint32_t denorm_mode) {
+  if (!minmax_keeps_nan_operand(arch)) {
+    if (std::isnan(a) || std::isnan(b))
+      return std::numeric_limits<T>::quiet_NaN();
+  } else {
+    if constexpr (std::is_same_v<T, double>) {
+      a = compare_input_f64(a, denorm_mode);
+      b = compare_input_f64(b, denorm_mode);
+    } else if constexpr (Half) {
+      a = compare_input_f16(a, denorm_mode);
+      b = compare_input_f16(b, denorm_mode);
+    } else {
+      a = compare_input_f32(a, denorm_mode);
+      b = compare_input_f32(b, denorm_mode);
+    }
+    if (std::isnan(a))
+      return quiet_nan_operand(a);
+    if (std::isnan(b))
+      return quiet_nan_operand(b);
+  }
+  if (a == b)
+    return std::signbit(a) == Maximum ? b : a;
+  if constexpr (Maximum)
+    return a > b ? a : b;
+  else
+    return a < b ? a : b;
+}
+
 /// @brief Apply the result-format rules required by an active OMOD.
 /// @details OMOD always flushes an output subnormal and maps either signed zero
 /// to positive zero. These helpers operate after the result has been rounded to

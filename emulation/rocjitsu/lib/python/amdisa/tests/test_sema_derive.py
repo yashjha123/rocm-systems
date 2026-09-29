@@ -437,6 +437,28 @@ class TestDeriveScalarBinop:
         assert expected_cpp in cpp
         assert 'write_scc' not in cpp
 
+    @pytest.mark.parametrize(
+        'name,helper,mode',
+        [
+            ('V_MINIMUM_F32', 'ieee_minmax<false>(', 'wf.fp_denorm_mode_f32())'),
+            (
+                'V_MAXIMUM_F16',
+                'ieee_minmax<true, true>(',
+                'wf.fp_denorm_mode_f16_f64())',
+            ),
+            ('V_MAXIMUM_F64', 'ieee_minmax<true>(', 'wf.fp_denorm_mode_f16_f64())'),
+        ],
+    )
+    def test_vector_minimum_maximum_use_mode_helper(self, name, helper, mode):
+        sem = derive_semantics(name, 'ENC_VOP3')
+        assert sem is not None
+        assert sem.semantic_class == 'vector_binop'
+
+        cpp = lower_sema_block(derive_sema_block(sem))
+        assert f'amdgpu::fp_mode::{helper}' in cpp
+        assert f'wf.cu().arch(), {mode}' in cpp
+        assert 'quiet_NaN' not in cpp
+
     def test_gfx1250_scalar_cvt_pk_rtz_uses_rtz_helper(self):
         sem = derive_semantics('S_CVT_PK_RTZ_F16_F32', 'ENC_SOP2')
         assert sem is not None

@@ -704,6 +704,36 @@ template <typename Batch> inline Batch compare_input_f64_simd(Batch value, const
   return value;
 }
 
+/// SIMD counterpart of fp_mode::ieee_minmax for F32 and F64 lanes. NaN results are rare, so
+/// their operand selection is repaired per lane after the vector select.
+template <bool Maximum, typename V> inline V ieee_minmax_simd(V a, V b, const Wavefront &wf) {
+  const auto select = [](V lhs, V rhs) {
+    if constexpr (Maximum)
+      return util::ieee_maximum_simd(lhs, rhs);
+    else
+      return util::ieee_minimum_simd(lhs, rhs);
+  };
+  if (!fp_mode::minmax_keeps_nan_operand(wf.cu().arch()))
+    return select(a, b);
+  if constexpr (std::is_same_v<typename V::value_type, double>) {
+    a = compare_input_f64_simd(a, wf);
+    b = compare_input_f64_simd(b, wf);
+  } else {
+    a = compare_input_f32_simd(a, wf);
+    b = compare_input_f32_simd(b, wf);
+  }
+  V result = select(a, b);
+  const auto nan = util::stdx::isnan(result);
+  if (util::stdx::any_of(nan))
+    for (std::size_t i = 0; i < result.size(); ++i)
+      if (nan[i]) {
+        const typename V::value_type lhs = a[i];
+        const typename V::value_type rhs = b[i];
+        result[i] = fp_mode::quiet_nan_operand(std::isnan(lhs) ? lhs : rhs);
+      }
+  return result;
+}
+
 inline util::native<uint32_t> finalize_omod_f16_bits_simd(util::native<uint32_t> value,
                                                           uint32_t omod) {
   if (omod == 0)

@@ -1997,8 +1997,8 @@ SIMD_VOP3_UNARY_INT_EXTRA: dict[str, tuple[str, str, str]] = {
 # glue; the functor sees already-modified native<float> args. Currently the
 # IEEE-2019 maximum/minimum (NaN-propagating, signed-zero-ordered) forms.
 SIMD_VOP3_BINARY_FP32: dict[str, str] = {
-    'v_maximum_f32_vop3': '[](auto a, auto b) { return util::ieee_maximum_simd(a, b); }',
-    'v_minimum_f32_vop3': '[](auto a, auto b) { return util::ieee_minimum_simd(a, b); }',
+    'v_maximum_f32_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<true>(a, b, wf); }',
+    'v_minimum_f32_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<false>(a, b, wf); }',
 }
 
 SIMD_VOP3_BINARY_FP64: dict[str, str] = {
@@ -2010,8 +2010,8 @@ SIMD_VOP3_BINARY_FP64: dict[str, str] = {
     'v_max_num_f64_vop3': '[](auto a, auto b) { return util::stdx::fmax(a, b); }',
     'v_min_num_f64_vop3': '[](auto a, auto b) { return util::stdx::fmin(a, b); }',
     # IEEE-2019 maximum/minimum (NaN-propagating, signed-zero-ordered).
-    'v_maximum_f64_vop3': '[](auto a, auto b) { return util::ieee_maximum_simd(a, b); }',
-    'v_minimum_f64_vop3': '[](auto a, auto b) { return util::ieee_minimum_simd(a, b); }',
+    'v_maximum_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<true>(a, b, wf); }',
+    'v_minimum_f64_vop3': '[&wf](auto a, auto b) { return amdgpu::ieee_minmax_simd<false>(a, b, wf); }',
 }
 
 # Plain f64 unary: scalar bodies are std::ceil / std::floor / std::trunc /
