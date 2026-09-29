@@ -295,4 +295,100 @@ TEST(ValuConversion, MatchesGfx1201Witnesses) {
   }
 }
 
+namespace fact = conversion_fact;
+
+struct FactCase {
+  const char *name;
+  uint64_t bits;
+  uint32_t facts;
+};
+
+void expect_evaluation(const FactCase &c, uint64_t bits, uint32_t facts) {
+  EXPECT_EQ(bits, c.bits) << c.name;
+  EXPECT_EQ(facts, c.facts) << c.name << " facts=0x" << std::hex << facts;
+}
+
+TEST(ValuConversion, ReportsFloatRoundingFacts) {
+  const auto f16 = [](uint32_t in, uint32_t md, const char *variant = "e64") {
+    return evaluate_float(in, F32, F16, mods_of(variant), mode_of(md));
+  };
+  const auto check = [](const FactCase &c, Evaluation<uint64_t> e) {
+    expect_evaluation(c, e.bits, e.facts);
+  };
+  // Rounds up to the smallest normal: tiny only before rounding, so nothing flushes.
+  check({"round up to normal", 0x0400, fact::kTinyBeforeRounding | fact::kInexact},
+        f16(0x387ff000u, 0x00u));
+  check({"tiny, flushed", 0x0000,
+         fact::kTinyBeforeRounding | fact::kTinyAfterRounding | fact::kOutputFlushed |
+             fact::kInexact},
+        f16(0x387fe000u, 0x00u));
+  check({"tiny, subnormal encoding rounds up", 0x0400,
+         fact::kTinyBeforeRounding | fact::kTinyAfterRounding | fact::kInexact},
+        f16(0x387fe000u, 0xf0u));
+  check({"tiny under OMOD", 0x0000,
+         fact::kTinyBeforeRounding | fact::kTinyAfterRounding | fact::kInexact |
+             fact::kOmodUnderflow},
+        f16(0x387fe000u, 0xf0u, "mul2"));
+  check({"overflow", 0x7c00, fact::kOverflow | fact::kInexact}, f16(0x477ff000u, 0xf0u));
+  check({"RTZ lands on max", 0x7bff, fact::kInexact}, f16(0x477ff000u, 0xfcu));
+  check({"FP16_OVFL saturates", 0x7bff, fact::kOverflow | fact::kInexact | fact::kSaturated},
+        f16(0x477ff000u, 0x8000f0u));
+  check({"OMOD overflow", 0x7c00, fact::kOmodOverflow}, f16(0x477fe000u, 0xf0u, "mul2"));
+  check({"CLAMP", 0x3c00, fact::kClamped}, f16(0x40000000u, 0xf0u, "clamp"));
+  check({"signaling NaN", 0x7e00, fact::kNan | fact::kSignalingNan}, f16(0x7f800001u, 0xf0u));
+  check({"quiet NaN", 0x7e00, fact::kNan}, f16(0x7fc00000u, 0xf0u));
+  check({"infinity", 0xfc00, fact::kInfinite}, f16(0x7f800000u, 0xf0u, "neg0"));
+  const auto f32 = [](uint32_t in, uint32_t md) {
+    return evaluate_float(in, F16, F32, Modifiers{}, mode_of(md));
+  };
+  check({"kept subnormal", 0x33800000, fact::kInputDenormal}, f32(0x0001u, 0xf0u));
+  check({"flushed subnormal", 0x0, fact::kInputDenormal | fact::kInputFlushed},
+        f32(0x0001u, 0x30u));
+  check({"integer inexact", 0x4b800000, fact::kInexact},
+        evaluate_integer(16777217, F32, Modifiers{}, mode_of(0xf0u)));
+  check({"integer overflow", 0x7c00, fact::kOverflow | fact::kInexact},
+        evaluate_integer(65535, F16, Modifiers{}, mode_of(0xf0u)));
+}
+
+TEST(ValuConversion, ReportsIntegerRangeFacts) {
+  const auto i32 = [](uint64_t in, Format f, bool is_signed, const char *variant = "e64") {
+    return evaluate_to_integer(in, f, 0, mods_of(variant), mode_of(0xf0u),
+                               IntegerRounding::TRUNCATE, is_signed ? INT32_MIN : 0,
+                               is_signed ? INT32_MAX : UINT32_MAX, false);
+  };
+  const auto check = [](const FactCase &c, Evaluation<int64_t> e) {
+    expect_evaluation(c, static_cast<uint64_t>(e.bits), e.facts);
+  };
+  check({"truncation", 2, fact::kInexact}, i32(0x40200000u, F32, true));
+  check({"below INT32_MIN before truncation", static_cast<uint64_t>(int64_t{INT32_MIN}),
+         fact::kOutOfRange | fact::kInexact},
+        i32(0xc1e0000000100000ull, F64, true));
+  check({"exactly INT32_MIN", static_cast<uint64_t>(int64_t{INT32_MIN}), 0},
+        i32(0xcf000000u, F32, true));
+  check({"2^31", INT32_MAX, fact::kOutOfRange}, i32(0x4f000000u, F32, true));
+  check({"negative unsigned", 0, fact::kOutOfRange | fact::kInexact}, i32(0xbf000000u, F32, false));
+  check({"negated unsigned", 0, fact::kOutOfRange}, i32(0x3f800000u, F32, false, "neg0"));
+  check({"NaN", 0, fact::kNan}, i32(0x7fc00000u, F32, true));
+  check({"flushed subnormal", 0, fact::kInputDenormal | fact::kInputFlushed},
+        evaluate_to_integer(0x1u, F32, 0, Modifiers{}, mode_of(0x00u), IntegerRounding::TRUNCATE,
+                            INT32_MIN, INT32_MAX, false));
+}
+
+TEST(ValuConversion, ReportsFp8Facts) {
+  const auto fp8 = [](uint32_t in, uint32_t md) {
+    return evaluate_fp8(in, FP8, 0, Modifiers{}, mode_of(md), false, 0);
+  };
+  const auto check = [](const FactCase &c, Evaluation<uint8_t> e) {
+    expect_evaluation(c, e.bits, e.facts);
+  };
+  check({"exact", 0x38, 0}, fp8(0x3f800000u, 0xf0u));
+  check({"inexact", 0x38, fact::kInexact}, fp8(0x3f800001u, 0xf0u));
+  check({"overflow", 0x7f, fact::kOverflow | fact::kInexact}, fp8(0x447a0000u, 0xf0u));
+  check({"FP16_OVFL", 0x7e, fact::kOverflow | fact::kInexact | fact::kSaturated},
+        fp8(0x447a0000u, 0x8000f0u));
+  check({"signaling NaN", 0xff, fact::kNan | fact::kSignalingNan}, fp8(0x7f800001u, 0xf0u));
+  check({"kept subnormal", 0x00, fact::kInputDenormal | fact::kInexact}, fp8(0x1u, 0xf0u));
+  check({"flushed subnormal", 0x00, fact::kInputDenormal | fact::kInputFlushed}, fp8(0x1u, 0xc0u));
+}
+
 } // namespace

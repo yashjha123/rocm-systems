@@ -10,6 +10,9 @@
 /// format, then OMOD on the rounded result, then CLAMP. The rules come from comparing a
 /// physical RX 9070 XT (gfx1201) with the emulator across all MODE settings; other profiles
 /// keep their existing generated conversions.
+///
+/// The evaluate_*() helpers also return the numerical facts learned on the way, before later
+/// stages lose them; the value-only helpers return the same bits without the facts.
 
 #include "rocjitsu/code/rj_code.h"
 
@@ -58,6 +61,49 @@ inline constexpr Format F64{11, 52};
 inline constexpr Format FP8{4, 3};
 inline constexpr Format BF8{5, 2};
 
+/// Numerical facts of one conversion. These are not TRAPSTS bits: a target's cause mapping
+/// decides which of them raise, combine or suppress architectural causes. The conversion core
+/// and OMOD report separately, so an event is not lost when a later stage changes the value.
+namespace conversion_fact {
+/// The source, after ABS and NEG, is a signaling NaN.
+inline constexpr uint32_t kSignalingNan = 1u << 0;
+/// The source is a NaN, quiet or signaling.
+inline constexpr uint32_t kNan = 1u << 1;
+inline constexpr uint32_t kInfinite = 1u << 2;
+/// A source was subnormal before input flushing.
+inline constexpr uint32_t kInputDenormal = 1u << 3;
+inline constexpr uint32_t kInputFlushed = 1u << 4;
+/// Rounding, truncation or output flushing discarded nonzero bits, or the value overflowed.
+inline constexpr uint32_t kInexact = 1u << 5;
+/// The value rounded to the destination precision with an unbounded exponent exceeds the
+/// largest finite destination value.
+inline constexpr uint32_t kOverflow = 1u << 6;
+/// The exact value is nonzero and smaller in magnitude than the smallest normal.
+inline constexpr uint32_t kTinyBeforeRounding = 1u << 7;
+/// The value rounded to the destination precision with an unbounded exponent is nonzero and
+/// smaller in magnitude than the smallest normal.
+inline constexpr uint32_t kTinyAfterRounding = 1u << 8;
+inline constexpr uint32_t kOutputFlushed = 1u << 9;
+/// An overflowing value produced the largest finite value (rounding mode or FP16_OVFL).
+inline constexpr uint32_t kSaturated = 1u << 10;
+/// An integer destination cannot hold the value before truncation: it lies outside
+/// [lowest, highest + 1).
+inline constexpr uint32_t kOutOfRange = 1u << 11;
+/// OMOD scaled a finite result past the largest finite value.
+inline constexpr uint32_t kOmodOverflow = 1u << 16;
+/// OMOD produced zero from a nonzero result: a tiny or subnormal result, or a scale-down
+/// below the normal range.
+inline constexpr uint32_t kOmodUnderflow = 1u << 17;
+/// CLAMP replaced the value.
+inline constexpr uint32_t kClamped = 1u << 18;
+} // namespace conversion_fact
+
+/// @brief Destination bits together with the facts learned computing them.
+template <typename Bits> struct Evaluation {
+  Bits bits = 0;
+  uint32_t facts = 0;
+};
+
 namespace detail {
 
 inline bool is_nan(uint64_t bits, Format f) {
@@ -86,6 +132,18 @@ inline uint64_t flush_input(uint64_t bits, Format f, uint32_t denorm_mode) {
   if (!(denorm_mode & 1u) && (bits & f.exponent_mask()) == 0)
     return bits & f.sign();
   return bits;
+}
+
+/// Facts about a modified source that input flushing is about to erase.
+inline uint32_t source_facts(uint64_t bits, Format f, uint32_t denorm_mode) {
+  namespace fact = conversion_fact;
+  if (is_nan(bits, f))
+    return fact::kNan | ((bits >> (f.fraction_bits - 1)) & 1u ? 0u : fact::kSignalingNan);
+  if (is_inf(bits, f))
+    return fact::kInfinite;
+  if ((bits & f.exponent_mask()) == 0 && (bits & f.fraction_mask()) != 0)
+    return fact::kInputDenormal | (denorm_mode & 1u ? 0u : fact::kInputFlushed);
+  return 0;
 }
 
 /// A finite nonzero magnitude as significand * 2^exponent.
@@ -128,6 +186,15 @@ inline uint64_t shift_round(uint64_t significand, int shift, uint32_t rounding, 
   }
 }
 
+/// Whether `significand >> shift` drops nonzero bits.
+inline bool discards(uint64_t significand, int shift) {
+  if (shift <= 0)
+    return false;
+  if (shift >= 64)
+    return significand != 0;
+  return (significand & ((uint64_t{1} << shift) - 1)) != 0;
+}
+
 /// Options for the final rounding to a destination format.
 struct Rounding {
   uint32_t mode = 0;
@@ -150,19 +217,27 @@ inline bool tiny_after_rounding(uint64_t significand, int exponent, Format f, ui
 }
 
 /// Round significand * 2^exponent to `f` exactly once.
-inline uint64_t encode(bool negative, uint64_t significand, int exponent, Format f,
-                       const Rounding &r) {
+inline Evaluation<uint64_t> round_to(bool negative, uint64_t significand, int exponent, Format f,
+                                     const Rounding &r) {
+  namespace fact = conversion_fact;
   const uint64_t sign = negative ? f.sign() : 0;
   if (significand == 0)
-    return sign;
+    return {sign, 0};
   const int min_exponent = 1 - f.bias();
   const int max_exponent = r.max_exponent ? r.max_exponent : f.bias();
   const int top = top_bit(significand) + exponent;
-  if (r.flush_output && tiny_after_rounding(significand, exponent, f, r.mode, negative))
-    return sign;
+  uint32_t facts = 0;
+  if (top < min_exponent)
+    facts |= fact::kTinyBeforeRounding;
+  if (tiny_after_rounding(significand, exponent, f, r.mode, negative))
+    facts |= fact::kTinyAfterRounding;
+  if (r.flush_output && (facts & fact::kTinyAfterRounding))
+    return {sign, facts | fact::kOutputFlushed | fact::kInexact};
   const int result_exponent = top > min_exponent ? top : min_exponent;
-  uint64_t units =
-      shift_round(significand, result_exponent - f.fraction_bits - exponent, r.mode, negative);
+  const int shift = result_exponent - f.fraction_bits - exponent;
+  uint64_t units = shift_round(significand, shift, r.mode, negative);
+  if (discards(significand, shift))
+    facts |= fact::kInexact;
   int unit_exponent = result_exponent;
   if (units >> (f.fraction_bits + 1)) {
     units >>= 1;
@@ -170,37 +245,47 @@ inline uint64_t encode(bool negative, uint64_t significand, int exponent, Format
   }
   if (unit_exponent > max_exponent) {
     const bool infinite = to_infinity(r.mode, negative) && !r.overflow_to_max;
-    return sign | (infinite ? f.exponent_mask()
-                            : (static_cast<uint64_t>(max_exponent + f.bias()) << f.fraction_bits) |
-                                  f.fraction_mask());
+    facts |= fact::kOverflow | fact::kInexact | (infinite ? 0u : fact::kSaturated);
+    return {sign | (infinite ? f.exponent_mask()
+                             : (static_cast<uint64_t>(max_exponent + f.bias()) << f.fraction_bits) |
+                                   f.fraction_mask()),
+            facts};
   }
   if (!(units >> f.fraction_bits))
-    return sign | units;
-  return sign | (static_cast<uint64_t>(unit_exponent + f.bias()) << f.fraction_bits) |
-         (units & f.fraction_mask());
+    return {sign | units, facts};
+  return {sign | (static_cast<uint64_t>(unit_exponent + f.bias()) << f.fraction_bits) |
+              (units & f.fraction_mask()),
+          facts};
+}
+
+inline uint64_t encode(bool negative, uint64_t significand, int exponent, Format f,
+                       const Rounding &r) {
+  return round_to(negative, significand, exponent, f, r).bits;
 }
 
 /// OMOD on a rounded result: zero and subnormal become +0, underflow keeps the
 /// sign, and overflow rounds in the guest mode.
-inline uint64_t apply_omod(uint64_t bits, Format f, uint32_t omod, uint32_t rounding,
-                           bool overflow_to_max) {
+inline Evaluation<uint64_t> apply_omod(uint64_t bits, Format f, uint32_t omod, uint32_t rounding,
+                                       bool overflow_to_max) {
+  namespace fact = conversion_fact;
   if (omod == 0 || (bits & f.exponent_mask()) == f.exponent_mask())
-    return bits;
+    return {bits, 0};
   const int field = static_cast<int>((bits & f.exponent_mask()) >> f.fraction_bits);
   if (field == 0)
-    return 0;
+    return {0, (bits & f.fraction_mask()) ? fact::kOmodUnderflow : 0u};
   const uint64_t sign = bits & f.sign();
   const int adjusted = field + (omod == 3 ? -1 : static_cast<int>(omod));
   if (adjusted <= 0)
-    return sign;
+    return {sign, fact::kOmodUnderflow};
   const int limit = (1 << f.exponent_bits) - 1;
   if (adjusted >= limit) {
     const bool infinite = to_infinity(rounding, sign != 0) && !overflow_to_max;
-    return sign |
-           (infinite ? f.exponent_mask()
-                     : f.exponent_mask() - (uint64_t{1} << f.fraction_bits) + f.fraction_mask());
+    return {sign | (infinite
+                        ? f.exponent_mask()
+                        : f.exponent_mask() - (uint64_t{1} << f.fraction_bits) + f.fraction_mask()),
+            fact::kOmodOverflow};
   }
-  return (bits & ~f.exponent_mask()) | (static_cast<uint64_t>(adjusted) << f.fraction_bits);
+  return {(bits & ~f.exponent_mask()) | (static_cast<uint64_t>(adjusted) << f.fraction_bits), 0};
 }
 
 /// CLAMP: NaN and negative values become +0, values above one become one.
@@ -230,10 +315,18 @@ inline uint32_t denorm_mode(const Mode &m, Format f) {
 }
 
 /// OMOD then CLAMP on a rounded floating result.
-inline uint64_t finish(uint64_t bits, Format f, const Modifiers &mods, const Mode &m) {
+inline Evaluation<uint64_t> finish(Evaluation<uint64_t> rounded, Format f, const Modifiers &mods,
+                                   const Mode &m) {
   const bool saturate = f.fraction_bits == F16.fraction_bits && m.fp16_overflow;
-  bits = apply_omod(bits, f, mods.omod, round_mode(m, f), saturate);
-  return mods.clamp ? apply_clamp(bits, f) : bits;
+  const Evaluation<uint64_t> scaled =
+      apply_omod(rounded.bits, f, mods.omod, round_mode(m, f), saturate);
+  Evaluation<uint64_t> result{scaled.bits, rounded.facts | scaled.facts};
+  if (mods.clamp) {
+    result.bits = apply_clamp(scaled.bits, f);
+    if (result.bits != scaled.bits)
+      result.facts |= conversion_fact::kClamped;
+  }
+  return result;
 }
 
 /// Rounding options for a MODE-governed floating destination.
@@ -250,42 +343,57 @@ inline Rounding destination(const Mode &m, Format f) {
 /// disabled, while a tiny value flushes, and under OMOD becomes +0 even when its subnormal
 /// encoding would round up to the smallest normal. NaNs are quieted and keep the leading payload
 /// bits.
-inline uint64_t convert_float(uint64_t bits, Format from, Format to, const Modifiers &mods,
-                              const Mode &m) {
+inline Evaluation<uint64_t> evaluate_float(uint64_t bits, Format from, Format to,
+                                           const Modifiers &mods, const Mode &m) {
   bits = detail::modify(bits & (from.sign() | from.magnitude_mask()), from, mods, 0);
+  const uint32_t source = detail::source_facts(bits, from, detail::denorm_mode(m, from));
   bits = detail::flush_input(bits, from, detail::denorm_mode(m, from));
   const bool negative = (bits & from.sign()) != 0;
-  uint64_t result;
+  Evaluation<uint64_t> rounded;
   if (detail::is_nan(bits, from))
-    result = detail::convert_nan(bits, from, to);
+    rounded.bits = detail::convert_nan(bits, from, to);
   else if (detail::is_inf(bits, from))
-    result = (negative ? to.sign() : 0) | to.exponent_mask();
+    rounded.bits = (negative ? to.sign() : 0) | to.exponent_mask();
   else if ((bits & from.magnitude_mask()) == 0)
-    result = negative ? to.sign() : 0;
+    rounded.bits = negative ? to.sign() : 0;
   else {
     const detail::Exact e = detail::exact(bits, from);
+    rounded = detail::round_to(negative, e.significand, e.exponent, to, detail::destination(m, to));
     // OMOD treats a result that is tiny after rounding to the destination precision as zero,
     // even when the subnormal encoding rounds up to the smallest normal.
-    if (mods.omod && detail::tiny_after_rounding(e.significand, e.exponent, to,
-                                                 detail::round_mode(m, to), negative))
-      return mods.clamp ? 0 : detail::finish(0, to, mods, m);
-    result = detail::encode(negative, e.significand, e.exponent, to, detail::destination(m, to));
+    if (mods.omod && (rounded.facts & conversion_fact::kTinyAfterRounding)) {
+      rounded.facts |= conversion_fact::kOmodUnderflow;
+      rounded.bits = 0;
+    }
   }
-  return detail::finish(result, to, mods, m);
+  rounded.facts |= source;
+  return detail::finish(rounded, to, mods, m);
+}
+
+inline uint64_t convert_float(uint64_t bits, Format from, Format to, const Modifiers &mods,
+                              const Mode &m) {
+  return evaluate_float(bits, from, to, mods, m).bits;
 }
 
 /// @brief Convert a signed or unsigned integer (V_CVT_F16_I16/U16, V_CVT_F32_I32/U32).
 /// @details The destination format's MODE.FP_ROUND field selects the rounding.
-inline uint64_t convert_integer(int64_t value, Format to, const Modifiers &mods, const Mode &m) {
+inline Evaluation<uint64_t> evaluate_integer(int64_t value, Format to, const Modifiers &mods,
+                                             const Mode &m) {
   const bool negative = value < 0;
   const uint64_t magnitude =
       negative ? uint64_t{0} - static_cast<uint64_t>(value) : static_cast<uint64_t>(value);
-  const uint64_t result = detail::encode(negative, magnitude, 0, to, detail::destination(m, to));
-  return detail::finish(result, to, mods, m);
+  return detail::finish(detail::round_to(negative, magnitude, 0, to, detail::destination(m, to)),
+                        to, mods, m);
+}
+
+inline uint64_t convert_integer(int64_t value, Format to, const Modifiers &mods, const Mode &m) {
+  return evaluate_integer(value, to, mods, m).bits;
 }
 
 /// @brief V_CVT_PK_RTZ_F16_F32: two F32 sources rounded toward zero into packed halves.
-inline uint32_t pack_rtz_f16(uint32_t lo, uint32_t hi, const Modifiers &mods, const Mode &m) {
+/// @details The facts of both halves are combined.
+inline Evaluation<uint32_t> evaluate_pack_rtz_f16(uint32_t lo, uint32_t hi, const Modifiers &mods,
+                                                  const Mode &m) {
   Mode rtz = m;
   rtz.round_f16_f64 = 3;
   rtz.fp16_overflow = false;
@@ -294,9 +402,16 @@ inline uint32_t pack_rtz_f16(uint32_t lo, uint32_t hi, const Modifiers &mods, co
     Modifiers shifted = source_only;
     shifted.abs >>= index;
     shifted.neg >>= index;
-    return static_cast<uint32_t>(convert_float(bits, F32, F16, shifted, rtz));
+    return evaluate_float(bits, F32, F16, shifted, rtz);
   };
-  return half(lo, 0) | (half(hi, 1) << 16);
+  const Evaluation<uint64_t> low = half(lo, 0);
+  const Evaluation<uint64_t> high = half(hi, 1);
+  return {static_cast<uint32_t>(low.bits) | (static_cast<uint32_t>(high.bits) << 16),
+          low.facts | high.facts};
+}
+
+inline uint32_t pack_rtz_f16(uint32_t lo, uint32_t hi, const Modifiers &mods, const Mode &m) {
+  return evaluate_pack_rtz_f16(lo, hi, mods, m).bits;
 }
 
 /// @brief V_PACK_B32_F16: source modifiers, input flushing and sNaN quieting per half.
@@ -316,27 +431,44 @@ enum class IntegerRounding : uint8_t { TRUNCATE, FLOOR, NEAREST_UP, MODE };
 
 /// @brief Convert a float to a saturated integer.
 /// @details NaN becomes zero, or the saturation bound matching its sign when `nan_by_sign` is
-/// set (V_CVT_FLOOR_I32_F32, V_CVT_NEAREST_I32_F32). Infinities saturate.
-inline int64_t convert_to_integer(uint64_t bits, Format from, int source_index,
-                                  const Modifiers &mods, const Mode &m, IntegerRounding how,
-                                  int64_t lowest, int64_t highest, bool nan_by_sign) {
+/// set (V_CVT_FLOOR_I32_F32, V_CVT_NEAREST_I32_F32). Infinities saturate. The range fact
+/// compares the value before rounding with [lowest, highest + 1); the inexact fact reports
+/// bits the rounding discarded.
+inline Evaluation<int64_t> evaluate_to_integer(uint64_t bits, Format from, int source_index,
+                                               const Modifiers &mods, const Mode &m,
+                                               IntegerRounding how, int64_t lowest, int64_t highest,
+                                               bool nan_by_sign) {
+  namespace fact = conversion_fact;
   bits = detail::modify(bits & (from.sign() | from.magnitude_mask()), from, mods, source_index);
+  const uint32_t source = detail::source_facts(bits, from, detail::denorm_mode(m, from));
   bits = detail::flush_input(bits, from, detail::denorm_mode(m, from));
   const bool negative = (bits & from.sign()) != 0;
   if (detail::is_nan(bits, from))
-    return nan_by_sign ? (negative ? lowest : highest) : 0;
+    return {nan_by_sign ? (negative ? lowest : highest) : 0, source};
   if (detail::is_inf(bits, from))
-    return negative ? lowest : highest;
+    return {negative ? lowest : highest, source};
   if ((bits & from.magnitude_mask()) == 0)
-    return 0;
+    return {0, source};
   const detail::Exact e = detail::exact(bits, from);
   const int top = detail::top_bit(e.significand) + e.exponent;
   if (top >= 63)
-    return negative ? lowest : highest;
+    return {negative ? lowest : highest, source | fact::kOutOfRange | fact::kInexact};
+  uint32_t facts = source;
+  // |value| truncated, and whether that dropped a fraction, decide the range check exactly.
+  const uint64_t whole = detail::shift_round(e.significand, -e.exponent, 3, negative);
+  const bool fraction = detail::discards(e.significand, -e.exponent);
+  if (fraction)
+    facts |= fact::kInexact;
+  const bool out_of_range =
+      negative ? (whole > uint64_t{0} - static_cast<uint64_t>(lowest) ||
+                  (whole == uint64_t{0} - static_cast<uint64_t>(lowest) && fraction))
+               : whole > static_cast<uint64_t>(highest);
+  if (out_of_range)
+    facts |= fact::kOutOfRange;
   uint64_t units;
   switch (how) {
   case IntegerRounding::TRUNCATE:
-    units = detail::shift_round(e.significand, -e.exponent, 3, negative);
+    units = whole;
     break;
   case IntegerRounding::FLOOR:
     units = detail::shift_round(e.significand, -e.exponent, 2, negative);
@@ -361,7 +493,14 @@ inline int64_t convert_to_integer(uint64_t bits, Format from, int source_index,
     break;
   }
   const int64_t value = negative ? -static_cast<int64_t>(units) : static_cast<int64_t>(units);
-  return value < lowest ? lowest : (value > highest ? highest : value);
+  return {value < lowest ? lowest : (value > highest ? highest : value), facts};
+}
+
+inline int64_t convert_to_integer(uint64_t bits, Format from, int source_index,
+                                  const Modifiers &mods, const Mode &m, IntegerRounding how,
+                                  int64_t lowest, int64_t highest, bool nan_by_sign) {
+  return evaluate_to_integer(bits, from, source_index, mods, m, how, lowest, highest, nan_by_sign)
+      .bits;
 }
 
 /// @brief V_CVT_NORM_I16_F16 / V_CVT_NORM_U16_F16 on one half, round to nearest even.
@@ -408,23 +547,29 @@ inline uint32_t decode_fp8(uint8_t byte, Format f) {
 /// signed NaN (FP8) or infinity (BF8) pattern, or the signed maximum under FP16_OVFL for a
 /// finite value. MODE.FP_DENORM for F32 flushes the input. Stochastic rounding truncates a
 /// value headed for the subnormal range to the normal-range precision first, then adds the
-/// top bits of `random` below the kept precision.
-inline uint8_t encode_fp8(uint32_t bits, Format f, int source_index, const Modifiers &mods,
-                          const Mode &m, bool stochastic, uint32_t random) {
+/// top bits of `random` below the kept precision. The inexact fact compares the encoded
+/// value with the exact source, so stochastic rounding reports it whenever the two differ.
+inline Evaluation<uint8_t> evaluate_fp8(uint32_t bits, Format f, int source_index,
+                                        const Modifiers &mods, const Mode &m, bool stochastic,
+                                        uint32_t random) {
+  namespace fact = conversion_fact;
   const bool fp8 = f.exponent_bits == FP8.exponent_bits;
   uint64_t v = detail::modify(bits, F32, mods, source_index);
+  const uint32_t source = detail::source_facts(v, F32, m.denorm_f32);
   v = detail::flush_input(v, F32, m.denorm_f32);
   const bool negative = (v & F32.sign()) != 0;
   const uint8_t sign = negative ? 0x80u : 0u;
   if (detail::is_nan(v, F32))
-    return fp8 ? 0xffu : 0xfeu;
+    return {static_cast<uint8_t>(fp8 ? 0xffu : 0xfeu), source};
   const uint8_t maximum = fp8 ? 0x7eu : 0x7bu;
   const uint8_t overflow = sign | (fp8 ? 0x7fu : 0x7cu);
   if (detail::is_inf(v, F32))
-    return overflow;
-  const uint8_t saturated = m.fp16_overflow ? static_cast<uint8_t>(sign | maximum) : overflow;
+    return {overflow, source};
+  const Evaluation<uint8_t> saturated{
+      m.fp16_overflow ? static_cast<uint8_t>(sign | maximum) : overflow,
+      source | fact::kOverflow | fact::kInexact | (m.fp16_overflow ? fact::kSaturated : 0u)};
   if ((v & F32.magnitude_mask()) == 0)
-    return sign;
+    return {sign, source};
   const detail::Exact e = detail::exact(v, F32);
   const int min_exponent = 1 - f.bias();
   const int top = detail::top_bit(e.significand) + e.exponent;
@@ -454,9 +599,18 @@ inline uint8_t encode_fp8(uint32_t bits, Format f, int source_index, const Modif
         return saturated;
     }
   }
+  // `shift` is positive here: an F32 significand always has more fraction bits than FP8/BF8.
+  const bool inexact =
+      shift >= 64 || (units << shift) >> shift != units || (units << shift) != e.significand;
   const int max_exponent = fp8 ? 8 : 15;
-  return static_cast<uint8_t>(
-      detail::encode(negative, units, unit_exponent, f, {0, false, false, max_exponent}));
+  return {static_cast<uint8_t>(
+              detail::encode(negative, units, unit_exponent, f, {0, false, false, max_exponent})),
+          source | (inexact ? fact::kInexact : 0u)};
+}
+
+inline uint8_t encode_fp8(uint32_t bits, Format f, int source_index, const Modifiers &mods,
+                          const Mode &m, bool stochastic, uint32_t random) {
+  return evaluate_fp8(bits, f, source_index, mods, m, stochastic, random).bits;
 }
 
 } // namespace rocjitsu::amdgpu::conversion
